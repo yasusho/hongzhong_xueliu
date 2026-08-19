@@ -243,8 +243,11 @@ class UIController {
     static createTileElement(tile) {
         const img = document.createElement('img');
         img.className = 'tile-img';
-        img.src = MahjongEngine.tileToSvgPath(tile);
-        img.alt = MahjongEngine.tileToString(tile);
+        if (tile) {
+            const svgPath = MahjongEngine.tileToSvgPath(tile);
+            if (svgPath) img.src = svgPath;
+            img.alt = MahjongEngine.tileToString(tile);
+        }
         img.draggable = false;
         return img;
     }
