@@ -13,10 +13,9 @@
     <header class="game-header">
         <h1 class="game-title">红中血流成河麻将</h1>
         <div class="header-actions">
-            <button onclick="gameController.startOnlineMatch()">开始对局</button>
+            <button id="btn-start" onclick="gameController.handleStartGame()">开始对局</button>
             <button id="btn-auto">托管: 关</button>
             <button onclick="gameController.handleJoinRoom()">加入房间</button>
-            <button onclick="gameController.handleCreateRoom()">换房间号</button>
         </div>
     </header>
 
@@ -26,8 +25,7 @@
             房间号: <span id="room-code-display" class="bold">----</span>
             <span id="room-role-display">(房主)</span>
         </div>
-        <div id="room-members-display">1P 2P(CPU) 3P(CPU) 4P(CPU)</div>
-        <button id="btn-host-start" onclick="gameController.startOnlineMatch()">开始对局</button>
+        <div id="room-members-display">1P(你) 2P(CPU) 3P(CPU) 4P(CPU)</div>
     </div>
 
     <!-- プレイヤー状態表 -->

@@ -33,11 +33,7 @@ class GameController {
         this.p2p.onRoomUpdate = (playersInfo, mySeat) => {
             const membersEl = typeof document !== 'undefined' ? document.getElementById('room-members-display') : null;
             if (membersEl) {
-                membersEl.innerText = playersInfo.map(p => `${p.name}${p.isAI ? '(CPU)' : (p.id === this.mySeat ? '(你)' : '(人)')}`).join(' ');
-            }
-            const hostStartBtn = typeof document !== 'undefined' ? document.getElementById('btn-host-start') : null;
-            if (hostStartBtn) {
-                hostStartBtn.style.display = this.p2p.isHost ? 'inline-block' : 'none';
+                membersEl.innerText = playersInfo.map(p => `${p.id + 1}P${p.isAI ? '(CPU)' : (p.id === this.mySeat ? '(你)' : '(人)')}`).join(' ');
             }
         };
     }
@@ -59,17 +55,17 @@ class GameController {
         this.state.reset();
 
         // プレイヤー表示名の設定
-        if (isOnlineMatch && this.p2p) {
+        if (this.p2p && this.p2p.playersInfo) {
             this.p2p.playersInfo.forEach((pInfo, idx) => {
                 if (this.state.players[idx]) {
                     this.state.players[idx].name = `${idx + 1}P${pInfo.isAI ? ' (CPU)' : (idx === this.mySeat ? ' (你)' : '')}`;
                 }
             });
         } else {
-            this.state.players[0].name = '1P';
-            this.state.players[1].name = '2P';
-            this.state.players[2].name = '3P';
-            this.state.players[3].name = '4P';
+            this.state.players[0].name = '1P (你)';
+            this.state.players[1].name = '2P (CPU)';
+            this.state.players[2].name = '3P (CPU)';
+            this.state.players[3].name = '4P (CPU)';
         }
 
         const startPlayer = Math.floor(Math.random() * CONFIG.TOTAL_PLAYERS);
@@ -97,11 +93,9 @@ class GameController {
 
     async handleCreateRoom() {
         try {
-            this.ui.log('正在初始化房间...');
             const code = await this.p2p.createRoom();
-            this.isOnline = true;
             this.showRoomBar(code, '房主');
-            this.ui.log(`房间就绪，房间号: ${code}`);
+            this.ui.log(`房间已建立，房间号: ${code}`);
             window.location.hash = code;
         } catch (err) {
             console.error('初始化房间失败:', err);
@@ -118,6 +112,7 @@ class GameController {
             this.isOnline = true;
             this.showRoomBar(this.p2p.roomCode, '玩家');
             window.location.hash = this.p2p.roomCode;
+            this.ui.log(`已加入房间 ${code}，等待房主开始对局...`);
         } catch (err) {
             alert('加入房间失败: ' + (err.message || err));
             this.ui.log('加入房间失败: ' + (err.message || err));
@@ -128,26 +123,21 @@ class GameController {
         const bar = document.getElementById('room-bar');
         const codeEl = document.getElementById('room-code-display');
         const roleEl = document.getElementById('room-role-display');
-        const hostStartBtn = document.getElementById('btn-host-start');
 
         if (bar) bar.style.display = 'flex';
         if (codeEl) codeEl.innerText = code;
         if (roleEl) roleEl.innerText = `(${role})`;
-        if (hostStartBtn) hostStartBtn.style.display = (this.p2p && this.p2p.isHost) ? 'inline-block' : 'none';
     }
 
-    copyRoomLink() {
-        const url = `${window.location.origin}${window.location.pathname}#${this.p2p.roomCode}`;
-        navigator.clipboard.writeText(url).then(() => {
-            alert('邀请链接已复制到剪贴板！发送给好友即可加入对局。');
-        }).catch(() => prompt('请复制以下链接:', url));
+    handleStartGame() {
+        if (this.isOnline && this.p2p && !this.p2p.isHost) {
+            this.ui.log('当前为玩家身份，请等待房主点击开始对局。');
+            return;
+        }
+        this.startOnlineMatch();
     }
 
     startOnlineMatch() {
-        if (!this.p2p || !this.p2p.isHost) {
-            this.initGame(false);
-            return;
-        }
         this.initGame(true);
         this.syncStateToPeers();
     }
