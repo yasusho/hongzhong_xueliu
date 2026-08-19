@@ -326,29 +326,36 @@ class GameController {
     }
 
     handleChangeName() {
-        const current = this.getMyName() || (this.p2p?.isHost ? '1P' : `${this.mySeat + 1}P`);
+        const current = this.getMyName() || (this.mySeat === 0 ? '1P' : `${this.mySeat + 1}P`);
         const input = prompt('请输入你的玩家昵称 (最多8字):', current);
         if (input == null) return;
-        const rawName = input.trim().slice(0, 8) || `${this.mySeat + 1}P`;
+        const rawName = input.trim().slice(0, 8) || (this.mySeat === 0 ? '1P' : `${this.mySeat + 1}P`);
         this.setMyName(rawName);
 
-        const formattedName = this.p2p?.isHost ? `${rawName} (房主)` : rawName;
+        const isHostOrSolo = (this.mySeat === 0 || !this.p2p || !this.p2p.roomCode || this.p2p.isHost);
+        const formattedName = isHostOrSolo ? `${rawName} (房主)` : rawName;
 
-        if (this.p2p?.isHost) {
-            this.p2p.playersInfo[0].name = formattedName;
-            this.state.players[0].name = formattedName;
-            this.p2p.broadcastRoomInfo();
-            this.syncStateToPeers();
-            this.updateRoomMembersDisplay();
-            this.ui.render(this.state, this.mySeat);
+        if (this.state.players[this.mySeat]) {
+            this.state.players[this.mySeat].name = formattedName;
+        }
+
+        if (this.p2p?.playersInfo?.[this.mySeat]) {
+            this.p2p.playersInfo[this.mySeat].name = formattedName;
+        }
+
+        if (isHostOrSolo) {
+            if (this.p2p?.isHost) {
+                this.p2p.broadcastRoomInfo();
+                this.syncStateToPeers();
+            }
             this.log(`房主昵称已修改为: ${rawName}`);
         } else {
-            if (this.state.players[this.mySeat]) this.state.players[this.mySeat].name = formattedName;
             this.p2p?.sendAction('SET_NAME', { name: formattedName });
-            this.updateRoomMembersDisplay();
-            this.ui.render(this.state, this.mySeat);
             this.log(`昵称已修改为: ${rawName}`);
         }
+
+        this.updateRoomMembersDisplay();
+        this.ui.render(this.state, this.mySeat);
     }
 
     async handleCreateRoom(code = null) {
