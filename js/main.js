@@ -188,7 +188,24 @@ class UIController {
         const modal = this.$('result-modal');
         if (!modal) return;
         const sorted = [...players].sort((a, b) => b.score - a.score);
-        this.$('result-ranks').innerHTML = sorted.map((p, idx) => `<div class="result-rank-row"><span class="rank-name">${idx + 1}位 ${p.name}</span><span class="rank-score"><b>${p.score}分</b> (胡${p.huRecords.length}次)</span></div>`).join('');
+
+        const ranksHtml = sorted.map((p, idx) => {
+            const huList = (p.huRecords || []).map((r, i) =>
+                `<div class="result-hu-item">• ${r.score}分 (${r.fan}番: ${r.fanName || '平胡'}${r.isZiMo ? ' 自摸' : ''})</div>`
+            ).join('');
+
+            return `
+                <div class="result-rank-card">
+                    <div class="result-rank-header">
+                        <span>${idx + 1}位 ${p.name}</span>
+                        <span class="result-rank-score">${p.score}分 (胡${p.huRecords?.length || 0}次)</span>
+                    </div>
+                    ${huList ? `<div class="result-hu-list">${huList}</div>` : `<div class="result-no-hu">本局未胡牌</div>`}
+                </div>
+            `;
+        }).join('');
+
+        this.$('result-ranks').innerHTML = ranksHtml;
 
         const pen = this.$('result-penalties');
         if (pen) {
@@ -196,7 +213,9 @@ class UIController {
             pen.style.display = penaltyLogs.length ? 'block' : 'none';
         }
 
-        const btn = modal.querySelector('.btn-restart'), ctrl = window.gameController, isHost = Boolean(ctrl?.p2p?.isHost);
+        const btn = modal.querySelector('.btn-restart');
+        const ctrl = (typeof window !== 'undefined') ? window.gameController : null;
+        const isHost = Boolean(ctrl?.p2p?.isHost);
         if (btn) {
             btn.innerText = ctrl?.isOnline ? (isHost ? '再来一局 (房主开始)' : '等待房主再来一局') : '再来一局';
             btn.disabled = Boolean(ctrl?.isOnline && !isHost);
@@ -227,7 +246,6 @@ class GameController {
 
     isHumanPlayer = idx => this.p2p?.playersInfo?.[idx] ? !this.p2p.playersInfo[idx].isAI : idx === 0;
 
-    // 客観的な基本プレイヤー名（ログ・対局表・共有データ用）
     getBasePlayerName = idx => {
         const info = this.p2p?.playersInfo?.[idx];
         if (info?.name) return info.name;
@@ -235,7 +253,6 @@ class GameController {
         return this.isHumanPlayer(idx) ? `${idx + 1}P (玩家)` : `${idx + 1}P (电脑)`;
     };
 
-    // 自分のクライアント画面限定の表示名（バッジ用: 自分にのみ「(你)」を付ける）
     getMemberBadgeName = idx => {
         const base = this.getBasePlayerName(idx);
         return idx === this.mySeat ? `${base} (你)` : base;
@@ -243,7 +260,11 @@ class GameController {
 
     updateRoomMembersDisplay() {
         const el = UIController.$('room-members-display');
-        if (el) el.innerHTML = [0, 1, 2, 3].map(i => `<span class="member-badge ${this.isHumanPlayer(i) ? 'human' : 'cpu'}">${this.getMemberBadgeName(i)}</span>`).join(' ');
+        if (el) {
+            el.innerHTML = [0, 1, 2, 3].map(i =>
+                `<span class="member-badge ${this.isHumanPlayer(i) ? 'human' : 'cpu'}" onclick="${i === this.mySeat ? 'gameController.handleChangeName()' : ''}" title="${i === this.mySeat ? '点击修改昵称' : ''}">${this.getMemberBadgeName(i)}</span>`
+            ).join(' ');
+        }
     }
 
     initP2PEvents() {
@@ -286,6 +307,22 @@ class GameController {
         this.state.wallCount = deck.length;
         this.state.sortAllHands();
         this.startSwap3Phase();
+    }
+
+    startOnlineMatch() {
+        if (!this.p2p?.isHost) return;
+        this.initGame(true);
+        this.syncStateToPeers();
+    }
+
+    handleResetAndNewRoom() {
+        UIController.hideResultModal();
+        sessionStorage.removeItem('hz_session');
+        this.p2p.reset();
+        const code = String(Math.floor(1000 + Math.random() * 9000));
+        this.handleCreateRoom(code);
+        this.initGame(false);
+        this.log(`已重置所有连接并创建新房间: ${code} (房主)`);
     }
 
     handleChangeName() {
@@ -688,7 +725,7 @@ class GameController {
         const score = CONFIG.BASE_SCORE * Math.pow(2, fanInfo.fan);
 
         this.log(`★ ${p.name} ${isZiMo ? '自摸' : '点炮'}胡: ${fanInfo.name} ${fanInfo.fan}番 ${score}分 ${this.engine.tileToString(tile)}`);
-        p.huRecords.push({ fan: fanInfo.fan, fanName: fanInfo.name, score, isZiMo });
+        p.huRecords.push({ fan: fanInfo.fan, fanName: fanInfo.name, score, isZiMo, tile });
         this.state.lastActionIsGang = false;
         this.state.lastGangPlayer = null;
 
@@ -891,6 +928,7 @@ if (typeof window !== 'undefined') {
             btnAuto.onclick = () => {
                 _state.autoPlay = !_state.autoPlay;
                 btnAuto.innerText = `托管: ${_state.autoPlay ? '开' : '关'}`;
+                btnAuto.classList.toggle('active', _state.autoPlay);
                 if (_state.autoPlay && _state.phase === CONFIG.PHASES.PLAYING && _state.currentTurn === gameController.mySeat) {
                     gameController.autoPlayPlayerTurn(gameController.mySeat);
                 }
