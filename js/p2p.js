@@ -85,6 +85,11 @@ class P2PManager {
                     const seat = (valid && (valid.isAI || valid.peerId === conn.peer)) ? valid : this.playersInfo.find(p => p.id > 0 && p.isAI);
                     if (seat) {
                         Object.assign(seat, { isAI: false, peerId: conn.peer, name: `${seat.id + 1}P` });
+                        if (window.gameController?.state?.players?.[seat.id]) {
+                            const p = window.gameController.state.players[seat.id];
+                            p.swapTiles = [];
+                            p.que = null;
+                        }
                         conn.send({ type: 'JOIN_RES', success: true, seatIndex: seat.id, playersInfo: this.playersInfo });
                         this.broadcastRoomInfo();
                         window.UIController?.log(`${seat.name} 已连接。`);

@@ -72,7 +72,9 @@ class UIController {
 
         const myP = state.players[mySeat];
         if (myP) {
-            document.querySelector('.my-section')?.classList.toggle('turn-active', state.phase === CONFIG.PHASES.PLAYING && state.currentTurn === mySeat);
+            if (typeof document !== 'undefined') {
+                document.querySelector('.my-section')?.classList.toggle('turn-active', state.phase === CONFIG.PHASES.PLAYING && state.currentTurn === mySeat);
+            }
             const set = (id, txt) => { const el = this.$(id); if (el) el.innerText = txt; };
             set('hand-score-0', myP.score);
             set('hand-que-0', (isQue && myP.que) ? `缺${CONFIG.SUITS[myP.que]}` : '');
@@ -418,17 +420,21 @@ class GameController {
         if (p.isHu && index !== p.hand.length - 1) return this.log('胡牌后只能打出摸到的最后一张牌。');
 
         this.ui.hideActionBox();
-        if (this.p2p && !this.p2p.isHost) return this.p2p.sendAction('DISCARD', { handIndex: index });
+        if (this.p2p && !this.p2p.isHost) return this.p2p.sendAction('DISCARD', { handIndex: index, tileId: tile.id, tileCode: tile.code });
         this.executeDiscard(this.mySeat, index);
     }
 
-    executeDiscard(pIdx, hIdx) {
-        if (this.p2p && !this.p2p.isHost) return this.p2p.sendAction('DISCARD', { handIndex: hIdx });
+    executeDiscard(pIdx, hIdx, tileId = null, tileCode = null) {
+        if (this.p2p && !this.p2p.isHost) return this.p2p.sendAction('DISCARD', { handIndex: hIdx, tileId, tileCode });
         const p = this.state.players[pIdx];
         if (!p || p.hand.length % 3 !== 2 || this.isDiscarding) return;
         this.isDiscarding = true;
         try {
-            const actualIdx = (hIdx < 0 || hIdx >= p.hand.length) ? (p.hand.length - 1) : hIdx;
+            let actualIdx = -1;
+            if (tileId != null) actualIdx = p.hand.findIndex(t => t.id === tileId);
+            if (actualIdx === -1 && tileCode) actualIdx = p.hand.findIndex(t => t.code === tileCode);
+            if (actualIdx === -1) actualIdx = (hIdx < 0 || hIdx >= p.hand.length) ? (p.hand.length - 1) : hIdx;
+
             const tile = p.hand.splice(actualIdx, 1)[0];
             if (!tile) return;
 
@@ -623,7 +629,8 @@ class GameController {
             if (canHu) return this.p2p.sendAction('HU', { tile: drawn, isZiMo: true });
             if (gangs.length > 0) return this.p2p.sendAction('GANG', { gangOption: gangs[0] });
             const discardIdx = p.isHu ? (p.hand.length - 1) : this.ai.chooseDiscardIndex(p);
-            return this.p2p.sendAction('DISCARD', { handIndex: discardIdx });
+            const tile = p.hand[discardIdx];
+            return this.p2p.sendAction('DISCARD', { handIndex: discardIdx, tileId: tile?.id, tileCode: tile?.code });
         }
 
         if (canHu) return this.doHu(pIdx, drawn, true);
@@ -644,6 +651,7 @@ class GameController {
 
     handleRemoteStateSync(remoteState) {
         const savedIndices = this.state.selectedSwapIndices || [], savedQue = this.state.players[this.mySeat]?.que;
+        const mySwapTiles = this.state.players[this.mySeat]?.swapTiles;
 
         // DSL PRNGによる山と配牌の決定論的同期
         if (remoteState.gameSeed && this.state.gameSeed !== remoteState.gameSeed && remoteState.phase !== CONFIG.PHASES.INIT) {
@@ -651,7 +659,6 @@ class GameController {
             const prng = PRNGClass ? new PRNGClass(remoteState.gameSeed) : null;
             const start = prng ? prng.nextInt(0, CONFIG.TOTAL_PLAYERS - 1) : remoteState.startPlayer;
             const deck = this.engine.shuffle(this.engine.createDeck(), prng);
-            // 53枚配牌後の山をローカルに保持
             for (let r = 0; r < CONFIG.HAND_SIZE * CONFIG.TOTAL_PLAYERS + 1; r++) deck.pop();
             this.state.wall = deck;
             this.state.gameSeed = remoteState.gameSeed;
@@ -659,9 +666,14 @@ class GameController {
 
         Object.assign(this.state, remoteState);
 
+        // クライアント側の確定・選択状態の保護
         if (savedQue && this.state.players[this.mySeat] && !this.state.players[this.mySeat].que) {
             this.state.players[this.mySeat].que = savedQue;
         }
+        if (mySwapTiles?.length === 3 && this.state.players[this.mySeat] && (!this.state.players[this.mySeat].swapTiles || this.state.players[this.mySeat].swapTiles.length === 0)) {
+            this.state.players[this.mySeat].swapTiles = mySwapTiles;
+        }
+
         this.state.players.forEach((p, i) => { p.name = this.getPlayerDisplayName(i); });
         this.updateRoomMembersDisplay();
 
@@ -709,6 +721,7 @@ class GameController {
             CONFIRM_SWAP: () => {
                 p.swapTiles = payload.swapTileIds ? payload.swapTileIds.map(id => p.hand.find(x => x.id === id)).filter(Boolean) : (payload.swapTiles || []).map(t => p.hand.find(x => x.suit === t.suit && x.num === t.num)).filter(Boolean);
                 if (p.swapTiles?.length !== 3) p.swapTiles = p.hand.filter(t => t.suit !== 'HZ').slice(0, 3);
+                this.log(`${p.name} 已选择换牌。`);
                 this.checkAndExecuteSwap();
             },
             SELECT_QUE: () => {
@@ -717,7 +730,7 @@ class GameController {
                 this.ui.render(this.state, this.mySeat);
                 this.checkAndExecuteDingQue();
             },
-            DISCARD: () => this.executeDiscard(playerIndex, payload.handIndex),
+            DISCARD: () => this.executeDiscard(playerIndex, payload.handIndex, payload.tileId, payload.tileCode),
             HU: () => this.doHu(playerIndex, payload.tile, payload.isZiMo, payload.fromPlayer),
             GANG: () => this.doGang(playerIndex, payload.gangOption || { tile: payload.gangTile, type: 'AN_GANG' }),
             GANG_DISCARD: () => this._executeMeld(playerIndex, 'GANG', payload.tile, payload.fromPlayer, 3, CONFIG.GANG_SCORE, true),
