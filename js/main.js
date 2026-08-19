@@ -144,6 +144,16 @@ class GameController {
     syncStateToPeers() {
         if (this.isOnline && this.p2p && this.p2p.isHost) {
             this.p2p.broadcastState(this.state);
+            try {
+                sessionStorage.setItem('hz_live_state', JSON.stringify({
+                    phase: this.state.phase,
+                    currentTurn: this.state.currentTurn,
+                    startPlayer: this.state.startPlayer,
+                    wall: this.state.wall,
+                    lastDiscard: this.state.lastDiscard,
+                    players: this.state.players
+                }));
+            } catch(e) {}
         }
     }
 
