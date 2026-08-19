@@ -294,8 +294,11 @@ class GameController {
 
     selectUserQue(suit) {
         this.sound.play('select');
-        this.state.players[this.mySeat].que = suit;
+        if (this.state.players[this.mySeat]) {
+            this.state.players[this.mySeat].que = suit;
+        }
         this.ui.hideInstruction();
+        this.ui.render(this.state, this.mySeat);
 
         if (this.isOnline && !this.p2p.isHost) {
             this.p2p.sendAction('SELECT_QUE', { que: suit });
@@ -307,7 +310,11 @@ class GameController {
     }
 
     checkAndExecuteDingQue() {
-        if (!this.state.players.every(p => !!p.que)) return;
+        const allReady = this.state.players.every(p => !!p.que);
+        if (!allReady) {
+            this.syncStateToPeers();
+            return;
+        }
 
         this.state.sortAllHands();
         this.state.phase = CONFIG.PHASES.PLAYING;
@@ -921,6 +928,8 @@ class GameController {
         } else if (action === 'SELECT_QUE') {
             if (this.state.players[playerIndex]) {
                 this.state.players[playerIndex].que = payload.que;
+                this.ui.log(`${this.state.players[playerIndex].name} 已选择缺${CONFIG.SUITS[payload.que]}`);
+                this.ui.render(this.state, this.mySeat);
                 this.checkAndExecuteDingQue();
             }
         } else if (action === 'DISCARD') {
