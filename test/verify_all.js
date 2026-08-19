@@ -3,15 +3,11 @@
  */
 const assert = require('assert');
 
-// 1. 各モジュールのロード
-const CONFIG = require('../js/config.js');
-const { GameState } = require('../js/state.js');
-const MahjongEngine = require('../js/engine.js');
-const MahjongAI = require('../js/ai.js');
-const { DeterministicPRNG, DeterministicVM, TriggerResolutionEngine } = require('../js/dsl.js');
-const { SoundManager } = require('../js/audio.js');
+// 1. 統合モジュールのロード
+const { CONFIG, MahjongEngine, MahjongAI, GameFlow, GameState } = require('../js/engine.js');
+const { SoundManager, UIController, GameController } = require('../js/main.js');
 const { P2PManager } = require('../js/p2p.js');
-const { GameController } = require('../js/main.js');
+const { DeterministicPRNG, DeterministicVM, TriggerResolutionEngine } = require('../js/dsl.js');
 
 console.log('--- 1. モジュール読み込みテスト ---');
 assert(CONFIG && CONFIG.TOTAL_PLAYERS === 4, 'CONFIG loaded correctly');
@@ -20,6 +16,7 @@ assert(MahjongAI, 'MahjongAI loaded');
 assert(DeterministicVM, 'DeterministicVM loaded');
 assert(SoundManager, 'SoundManager loaded');
 assert(P2PManager, 'P2PManager loaded');
+assert(GameFlow, 'GameFlow loaded');
 console.log('✓ 全モジュールの読み込みに成功');
 
 console.log('\n--- 2. 麻雀エンジン（牌生成・ソート・文字列表現）テスト ---');
@@ -31,7 +28,7 @@ assert.strictEqual(hzCount, 4, 'Deck should contain 4 HongZhong tiles');
 const shuffled = MahjongEngine.shuffle(deck);
 assert.strictEqual(shuffled.length, 112, 'Shuffled deck should contain 112 tiles');
 
-// 牌表現テスト
+// 牌表現テスト (SVG / 文字列)
 const tileW1 = { suit: 'W', num: 1, code: '1W' };
 const tileHZ = { suit: 'HZ', num: 0, code: 'HZ' };
 assert.strictEqual(MahjongEngine.tileToString(tileW1), '1万');

@@ -2,221 +2,124 @@
  * 紅中血流成河麻雀 - 決定論的DSLインタプリタ & VM (Deterministic Game DSL)
  */
 class DeterministicPRNG {
-    constructor(seed = 12345678) {
-        this.s = seed >>> 0;
-    }
-
+    constructor(seed = 12345678) { this.s = (seed >>> 0) || 12345678; }
     nextUint32() {
         let t = (this.s += 0x6D2B79F5);
         t = Math.imul(t ^ (t >>> 15), t | 1);
         t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
         return (t ^ (t >>> 14)) >>> 0;
     }
-
-    nextFloat() {
-        return this.nextUint32() / 4294967296;
-    }
-
-    nextInt(min, max) {
-        if (min > max) [min, max] = [max, min];
-        return min + (this.nextUint32() % (max - min + 1));
-    }
-
-    clone() {
-        const copy = new DeterministicPRNG(0);
-        copy.s = this.s;
-        return copy;
-    }
+    nextFloat = () => this.nextUint32() / 4294967296;
+    nextInt = (min, max) => (min > max ? max : min) + (this.nextUint32() % (Math.abs(max - min) + 1));
+    clone() { const c = new DeterministicPRNG(0); c.s = this.s; return c; }
 }
 
 class DeterministicVM {
-    static execute(initialState, script, context) {
-        const state = JSON.parse(JSON.stringify(initialState));
-        const uiEvents = [];
-        const triggeredSequences = [];
-
+    static execute(initialState, script, ctx) {
+        const state = JSON.parse(JSON.stringify(initialState)), uiEvents = [], triggeredSequences = [];
         try {
-            if (!script || !Array.isArray(script.instructions)) {
-                throw new Error('Invalid Script AST: instructions array missing');
-            }
-            this.executeBlock(script.instructions, state, context, uiEvents, triggeredSequences);
+            if (!Array.isArray(script?.instructions)) throw new Error('Invalid Script AST');
+            this.executeBlock(script.instructions, state, ctx, uiEvents, triggeredSequences);
             return { ok: true, value: { nextState: state, uiEvents, triggeredSequences } };
-        } catch (err) {
-            return { ok: false, error: err && err.message ? err.message : String(err) };
-        }
+        } catch (err) { return { ok: false, error: err?.message || String(err) }; }
     }
 
     static executeBlock(instructions, state, ctx, uiEvents, triggers) {
-        for (const inst of instructions) {
-            switch (inst.type) {
-                case 'SET_STATE':
-                    this.setNestedPath(state, inst.path, this.evalExpr(inst.value, state, ctx));
-                    break;
-                case 'MODIFY_NUMERIC': {
-                    const delta = this.evalExpr(inst.delta, state, ctx);
-                    const current = this.getNestedPath(state, inst.path) ?? 0;
-                    this.setNestedPath(state, inst.path, current + delta);
-                    break;
-                }
-                case 'VAR_ASSIGN':
-                    ctx.variables.set(inst.name, this.evalExpr(inst.value, state, ctx));
-                    break;
-                case 'IF':
-                    if (Boolean(this.evalExpr(inst.condition, state, ctx))) {
-                        this.executeBlock(inst.then, state, ctx, uiEvents, triggers);
-                    } else if (inst.else) {
-                        this.executeBlock(inst.else, state, ctx, uiEvents, triggers);
+        const H = {
+            SET_STATE: i => this.setPath(state, i.path, this.evalExpr(i.value, state, ctx)),
+            MODIFY_NUMERIC: i => this.setPath(state, i.path, (this.getPath(state, i.path) ?? 0) + this.evalExpr(i.delta, state, ctx)),
+            VAR_ASSIGN: i => ctx.variables.set(i.name, this.evalExpr(i.value, state, ctx)),
+            IF: i => {
+                const b = this.evalExpr(i.condition, state, ctx) ? i.then : i.else;
+                if (b) this.executeBlock(b, state, ctx, uiEvents, triggers);
+            },
+            REPEAT: i => {
+                const count = this.evalExpr(i.count, state, ctx) || 0;
+                for (let k = 0; k < count; k++) this.executeBlock(i.body, state, ctx, uiEvents, triggers);
+            },
+            ROLL_DICE: i => {
+                const count = this.evalExpr(i.count, state, ctx) || 1, sides = this.evalExpr(i.sides, state, ctx) || 6;
+                ctx.variables.set(i.targetVar, Array.from({ length: count }, () => ctx.prng.nextInt(1, sides)));
+            },
+            SHUFFLE_LIST: i => {
+                const list = this.getPath(state, i.path);
+                if (Array.isArray(list)) {
+                    for (let k = list.length - 1; k > 0; k--) {
+                        const j = ctx.prng.nextInt(0, k);
+                        [list[k], list[j]] = [list[j], list[k]];
                     }
-                    break;
-                case 'REPEAT': {
-                    const count = this.evalExpr(inst.count, state, ctx) || 0;
-                    for (let i = 0; i < count; i++) this.executeBlock(inst.body, state, ctx, uiEvents, triggers);
-                    break;
                 }
-                case 'ROLL_DICE': {
-                    const count = this.evalExpr(inst.count, state, ctx) || 1;
-                    const sides = this.evalExpr(inst.sides, state, ctx) || 6;
-                    const rolls = Array.from({ length: count }, () => ctx.prng.nextInt(1, sides));
-                    ctx.variables.set(inst.targetVar, rolls);
-                    break;
+            },
+            TRANSFER_SCORE: i => {
+                const from = this.evalExpr(i.fromPlayer, state, ctx), to = this.evalExpr(i.toPlayer, state, ctx), amt = this.evalExpr(i.amount, state, ctx);
+                if (state.players?.[from] && state.players?.[to]) {
+                    state.players[from].score -= amt;
+                    state.players[to].score += amt;
                 }
-                case 'SHUFFLE_LIST': {
-                    const list = this.getNestedPath(state, inst.path);
-                    if (Array.isArray(list)) {
-                        for (let i = list.length - 1; i > 0; i--) {
-                            const j = ctx.prng.nextInt(0, i);
-                            [list[i], list[j]] = [list[j], list[i]];
-                        }
-                    }
-                    break;
-                }
-                case 'TRANSFER_SCORE': {
-                    const fromIdx = this.evalExpr(inst.fromPlayer, state, ctx);
-                    const toIdx = this.evalExpr(inst.toPlayer, state, ctx);
-                    const amount = this.evalExpr(inst.amount, state, ctx);
-                    if (state.players && state.players[fromIdx] && state.players[toIdx]) {
-                        state.players[fromIdx].score -= amount;
-                        state.players[toIdx].score += amount;
-                    }
-                    break;
-                }
-                case 'DISPATCH_TRIGGER': {
-                    const payload = {};
-                    if (inst.payload) {
-                        for (const [k, vExpr] of Object.entries(inst.payload)) payload[k] = this.evalExpr(vExpr, state, ctx);
-                    }
-                    triggers.push({ triggerId: inst.triggerId, payload });
-                    break;
-                }
-                case 'EMIT_UI_EVENT': {
-                    const payload = {};
-                    if (inst.payload) {
-                        for (const [k, vExpr] of Object.entries(inst.payload)) payload[k] = this.evalExpr(vExpr, state, ctx);
-                    }
-                    uiEvents.push({ sequenceId: ctx.sequenceId, eventType: inst.eventType, payload });
-                    break;
-                }
-            }
-        }
+            },
+            DISPATCH_TRIGGER: i => triggers.push({ triggerId: i.triggerId, payload: Object.fromEntries(Object.entries(i.payload || {}).map(([k, v]) => [k, this.evalExpr(v, state, ctx)])) }),
+            EMIT_UI_EVENT: i => uiEvents.push({ sequenceId: ctx.sequenceId, eventType: i.eventType, payload: Object.fromEntries(Object.entries(i.payload || {}).map(([k, v]) => [k, this.evalExpr(v, state, ctx)])) })
+        };
+        instructions.forEach(inst => H[inst.type]?.(inst));
     }
 
     static evalExpr(expr, state, ctx) {
-        if (expr === null || expr === undefined || typeof expr !== 'object') return expr;
-
-        switch (expr.type) {
-            case 'LITERAL': return expr.value;
-            case 'VAR': return ctx.variables.get(expr.name) ?? null;
-            case 'STATE_GET': return this.getNestedPath(state, expr.path);
-            case 'RANDOM_INT': {
-                const min = this.evalExpr(expr.min, state, ctx) || 0;
-                const max = this.evalExpr(expr.max, state, ctx) || 100;
-                return ctx.prng.nextInt(min, max);
-            }
-            case 'BINARY_OP': {
-                const l = this.evalExpr(expr.left, state, ctx);
-                const r = this.evalExpr(expr.right, state, ctx);
-                const ops = {
-                    '+': l + r, '-': l - r, '*': l * r, '/': Math.floor(l / r), '%': l % r,
-                    '==': l === r, '!=': l !== r, '<': l < r, '<=': l <= r, '>': l > r, '>=': l >= r
-                };
-                return ops[expr.op] ?? null;
-            }
-            case 'LOGICAL_OP':
-                if (expr.op === 'NOT') return !this.evalExpr(expr.args[0], state, ctx);
-                if (expr.op === 'AND') return expr.args.every(a => Boolean(this.evalExpr(a, state, ctx)));
-                if (expr.op === 'OR') return expr.args.some(a => Boolean(this.evalExpr(a, state, ctx)));
-                return false;
-            default: return expr;
-        }
+        if (expr == null || typeof expr !== 'object') return expr;
+        const H = {
+            LITERAL: e => e.value,
+            VAR: e => ctx.variables.get(e.name) ?? null,
+            STATE_GET: e => this.getPath(state, e.path),
+            RANDOM_INT: e => ctx.prng.nextInt(this.evalExpr(e.min, state, ctx) || 0, this.evalExpr(e.max, state, ctx) || 100),
+            BINARY_OP: e => {
+                const [l, r] = [this.evalExpr(e.left, state, ctx), this.evalExpr(e.right, state, ctx)];
+                return { '+': l + r, '-': l - r, '*': l * r, '/': Math.floor(l / r), '%': l % r, '==': l === r, '!=': l !== r, '<': l < r, '<=': l <= r, '>': l > r, '>=': l >= r }[e.op] ?? null;
+            },
+            LOGICAL_OP: e => ({
+                NOT: () => !this.evalExpr(e.args[0], state, ctx),
+                AND: () => e.args.every(a => Boolean(this.evalExpr(a, state, ctx))),
+                OR: () => e.args.some(a => Boolean(this.evalExpr(a, state, ctx)))
+            })[e.op]?.() ?? false
+        };
+        return H[expr.type] ? H[expr.type](expr) : expr;
     }
 
-    static getNestedPath(obj, path) {
-        if (!path || !Array.isArray(path)) return undefined;
-        return path.reduce((curr, key) => (curr != null ? curr[key] : undefined), obj);
-    }
-
-    static setNestedPath(obj, path, value) {
-        if (!path || !Array.isArray(path) || path.length === 0) return;
-        let curr = obj;
-        for (let i = 0; i < path.length - 1; i++) {
-            const key = path[i];
-            if (!(key in curr) || typeof curr[key] !== 'object' || curr[key] === null) curr[key] = {};
-            curr = curr[key];
-        }
-        curr[path[path.length - 1]] = value;
+    static getPath = (obj, path) => Array.isArray(path) ? path.reduce((c, k) => (c != null ? c[k] : undefined), obj) : undefined;
+    static setPath(obj, path, val) {
+        if (!Array.isArray(path) || !path.length) return;
+        path.slice(0, -1).reduce((c, k) => (c[k] = (c[k] && typeof c[k] === 'object') ? c[k] : {}), obj)[path[path.length - 1]] = val;
     }
 }
 
 class TriggerResolutionEngine {
-    constructor() {
-        this.scriptRegistry = new Map();
-    }
-
-    registerScript(id, script) {
-        this.scriptRegistry.set(id, script);
-    }
+    constructor() { this.scriptRegistry = new Map(); }
+    registerScript = (id, s) => this.scriptRegistry.set(id, s);
 
     executeAction(initialState, initialScript, baseContext) {
-        let currentState = initialState;
-        const prng = new DeterministicPRNG(baseContext.baseSeed || 12345678);
-        let sequenceCounter = 0;
-        const allEvents = [];
+        let currentState = initialState, seq = 0;
+        const prng = new DeterministicPRNG(baseContext.baseSeed || 12345678), allEvents = [];
         const queue = [{ script: initialScript, actorId: baseContext.actorId || '0', variables: new Map() }];
 
         while (queue.length > 0) {
             const task = queue.shift();
-            sequenceCounter++;
-
-            const context = {
-                actionId: `${baseContext.actionId || 'act'}#${sequenceCounter}`,
-                actorId: task.actorId,
-                sequenceId: sequenceCounter,
-                prng,
-                variables: task.variables
-            };
-
+            seq++;
+            const context = { actionId: `${baseContext.actionId || 'act'}#${seq}`, actorId: task.actorId, sequenceId: seq, prng, variables: task.variables };
             const result = DeterministicVM.execute(currentState, task.script, context);
-            if (!result.ok) throw new Error(`DSL Failure at seq ${sequenceCounter}: ${result.error}`);
+            if (!result.ok) throw new Error(`DSL Failure at seq ${seq}: ${result.error}`);
 
             currentState = result.value.nextState;
             allEvents.push(...result.value.uiEvents);
-
-            for (const trigger of result.value.triggeredSequences) {
-                const script = this.scriptRegistry.get(trigger.triggerId);
-                if (script) queue.push({ script, actorId: task.actorId, variables: new Map(Object.entries(trigger.payload)) });
-            }
+            result.value.triggeredSequences.forEach(trig => {
+                const s = this.scriptRegistry.get(trig.triggerId);
+                if (s) queue.push({ script: s, actorId: task.actorId, variables: new Map(Object.entries(trig.payload)) });
+            });
         }
-
         return { finalState: currentState, allEvents, finalHash: this.computeStateHash(currentState) };
     }
 
     computeStateHash(state) {
-        const canonicalJson = JSON.stringify(state, Object.keys(state).sort());
+        const json = JSON.stringify(state, Object.keys(state).sort());
         let hash = 0x811c9dc5;
-        for (let i = 0; i < canonicalJson.length; i++) {
-            hash ^= canonicalJson.charCodeAt(i);
-            hash = Math.imul(hash, 0x01000193);
-        }
+        for (let i = 0; i < json.length; i++) { hash ^= json.charCodeAt(i); hash = Math.imul(hash, 0x01000193); }
         return (hash >>> 0).toString(16).padStart(8, '0');
     }
 }

@@ -9,8 +9,6 @@
     <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 </head>
 <body>
-
-    <!-- ヘッダー操作部 -->
     <header class="game-header">
         <h1 class="game-title">红中血流成河麻将</h1>
         <div class="header-actions">
@@ -21,12 +19,8 @@
         </div>
     </header>
 
-    <!-- オンライン情報バー -->
     <div id="room-bar" class="room-bar">
-        <div>
-            房间号: <span id="room-code-display" class="bold"></span>
-            <span id="room-role-display">(房主)</span>
-        </div>
+        <div>房间号: <span id="room-code-display" class="bold"></span> <span id="room-role-display">(房主)</span></div>
         <div id="room-members-display">
             <span class="member-badge human">1P (你/房主)</span>
             <span class="member-badge cpu">2P (电脑)</span>
@@ -34,92 +28,50 @@
             <span class="member-badge cpu">4P (电脑)</span>
         </div>
     </div>
-    <script>
-        (function() {
-            var saved = null;
-            try { saved = JSON.parse(sessionStorage.getItem('hz_session')); } catch(e) {}
-            var isClient = (saved && saved.role === 'client');
-            var code = (saved && saved.roomCode) ? saved.roomCode : String(Math.floor(1000 + Math.random() * 9000));
-            var el = document.getElementById('room-code-display');
-            if (el) el.innerText = code;
-            var roleEl = document.getElementById('room-role-display');
-            if (roleEl) roleEl.innerText = isClient ? '(玩家)' : '(房主)';
-            var startBtn = document.getElementById('btn-start');
-            if (startBtn && isClient) startBtn.style.display = 'none';
-        })();
-    </script>
 
-    <!-- プレイヤー状態表 -->
     <table class="status-table">
-        <thead>
-            <tr>
-                <th>玩家</th>
-                <th>积分</th>
-                <th>定缺/状态</th>
-                <th>副露</th>
-            </tr>
-        </thead>
+        <thead><tr><th>玩家</th><th>积分</th><th>定缺/状态</th><th>副露</th></tr></thead>
         <tbody id="opponents-tbody"></tbody>
-        <tfoot>
-            <tr>
-                <td>剩余牌山</td>
-                <td colspan="3"><b id="wall-num">112</b> 张</td>
-            </tr>
-        </tfoot>
+        <tfoot><tr><td>剩余牌山</td><td colspan="3"><b id="wall-num">112</b> 张</td></tr></tfoot>
     </table>
 
-    <!-- 棄牌区（河） -->
     <fieldset class="river-section">
         <legend>弃牌区</legend>
         <div id="river-container"></div>
     </fieldset>
 
-    <!-- ログ -->
     <fieldset class="log-section">
         <legend>日志</legend>
-        <div class="sys-log" id="cmd-log">
-            <div>> 系统就绪。</div>
-        </div>
+        <div class="sys-log" id="cmd-log"><div>> 系统就绪。</div></div>
     </fieldset>
 
-    <!-- 自分の手牌ゾーン -->
     <fieldset class="my-section">
         <div class="my-status-bar">
             <span>积分: <b id="hand-score-0">5000</b></span>
             <span class="tag-que" id="hand-que-0"></span>
             <span class="tag-hu" id="hu-tag-0"></span>
-            <span id="ting-info" class="ting-panel" style="display:none;">
-                <b>听牌:</b> <span id="ting-list"></span>
-            </span>
+            <span id="ting-info" class="ting-panel" style="display:none;"><b>听牌:</b> <span id="ting-list"></span></span>
         </div>
 
-        <!-- 案内ボックス（換三張・定缺） -->
         <div class="instruction-box" id="phase-instruction" style="display:none;">
-            <b id="instruction-title">换三张</b>:
-            <span id="instruction-desc">选3张牌</span>
+            <b id="instruction-title">换三张</b>: <span id="instruction-desc">选3张牌</span>
             <span id="instruction-options"></span>
         </div>
 
-        <!-- 手牌と副露 -->
         <div class="my-hand-wrapper">
             <span id="hand-0" class="tile-group"></span>
             <span id="melds-0" class="tile-group"></span>
         </div>
 
-        <!-- アクションボタン -->
         <div id="cmd-box" class="action-box" style="display:none;">
             <button id="btn-hu" class="btn-action btn-hu">胡 (H)</button>
             <button id="btn-gang" class="btn-action">杠 (G)</button>
             <button id="btn-pung" class="btn-action">碰 (P)</button>
             <button id="btn-pass" class="btn-action">过 (X)</button>
         </div>
-
-        <div id="auto-hu-msg" class="tag-hu" style="display:none; margin-top: 6px;">
-            已胡牌（自动摸打中）
-        </div>
+        <div id="auto-hu-msg" class="tag-hu" style="display:none; margin-top: 6px;">已胡牌（自动摸打中）</div>
     </fieldset>
 
-    <!-- リザルトモーダル -->
     <div class="modal-overlay" id="result-modal" style="display:none;">
         <div class="modal-content">
             <h3>对局结算</h3>
@@ -129,14 +81,9 @@
         </div>
     </div>
 
-    <script src="js/config.js"></script>
     <script src="js/dsl.js"></script>
-    <script src="js/audio.js"></script>
     <script src="js/engine.js"></script>
-    <script src="js/ai.js"></script>
-    <script src="js/state.js"></script>
     <script src="js/p2p.js"></script>
-    <script src="js/ui.js"></script>
     <script src="js/main.js"></script>
 </body>
 </html>

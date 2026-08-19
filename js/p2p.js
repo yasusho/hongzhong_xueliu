@@ -1,280 +1,164 @@
 /**
- * 紅中血流成河麻雀 - WebRTC P2P (PeerJS) 通信マネージャー (P2PManager)
+ * 紅中血流成河麻雀 - WebRTC P2P 通信マネージャー (P2PManager)
  */
 class P2PManager {
-    constructor() {
-        this.reset();
-        this.roomCode = this._genRoomCode();
-        this.onStateReceived = null;
-        this.onActionReceived = null;
-        this.onRoomUpdate = null;
-        this.onPromptReceived = null;
-    }
-
-    _genRoomCode() {
-        return String(Math.floor(1000 + Math.random() * 9000));
-    }
+    constructor() { this.reset(); }
+    _gen = () => String(Math.floor(1000 + Math.random() * 9000));
 
     reset() {
-        if (this.peer && !this.peer.destroyed) {
-            try { this.peer.destroy(); } catch (e) {}
-        }
-        this.peer = null;
-        this.myPeerId = null;
-        this.isHost = false;
-        this.connections = {};
-        this.hostConn = null;
-        this.roomCode = null;
-        this.seatIndex = 0;
-        this.playersInfo = [
-            { id: 0, name: '1P', isAI: false, peerId: null },
-            { id: 1, name: '2P', isAI: true, peerId: null },
-            { id: 2, name: '3P', isAI: true, peerId: null },
-            { id: 3, name: '4P', isAI: true, peerId: null }
-        ];
+        try { if (this.peer && !this.peer.destroyed) this.peer.destroy(); } catch (e) {}
+        Object.assign(this, { peer: null, myPeerId: null, hostConn: null, roomCode: null, isHost: false, seatIndex: 0, connections: {} });
+        this.playersInfo = Array.from({ length: 4 }, (_, i) => ({ id: i, name: `${i + 1}P`, isAI: i !== 0, peerId: null }));
     }
 
     initPeer(customId = null) {
         return new Promise((resolve, reject) => {
-            if (typeof Peer === 'undefined') return reject(new Error('PeerJS库未加载'));
-            if (this.peer && !this.peer.destroyed) {
-                try { this.peer.destroy(); } catch (e) {}
-            }
+            if (typeof Peer === 'undefined') return reject(new Error('PeerJS未加载'));
+            try { if (this.peer && !this.peer.destroyed) this.peer.destroy(); } catch (e) {}
 
-            const id = customId || ('hz' + (this.roomCode || this._genRoomCode()));
-            try {
-                this.peer = new Peer(id, {
-                    debug: 1,
-                    config: {
-                        iceServers: [
-                            { urls: 'stun:stun.l.google.com:19302' },
-                            { urls: 'stun:stun1.l.google.com:19302' },
-                            { urls: 'stun:stun2.l.google.com:19302' }
-                        ]
-                    }
-                });
-            } catch (err) {
-                return reject(err);
-            }
+            const id = customId || ('hz' + (this.roomCode || this._gen()));
+            try { this.peer = new Peer(id, { debug: 1, config: { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] } }); } catch (err) { return reject(err); }
 
-            let resolved = false;
-            this.peer.on('open', (peerId) => {
-                this.myPeerId = peerId;
-                resolved = true;
-                resolve(peerId);
-            });
-
-            this.peer.on('error', (err) => {
-                if (!resolved) {
-                    resolved = true;
-                    if (err.type === 'unavailable-id') {
-                        const fallback = this._genRoomCode();
-                        this.roomCode = fallback;
-                        this.initPeer('hz' + fallback).then(resolve).catch(reject);
-                    } else {
-                        reject(err);
-                    }
+            this.peer.once('open', peerId => { this.myPeerId = peerId; resolve(peerId); });
+            this.peer.once('error', err => {
+                if (err.type === 'unavailable-id') {
+                    const code = this._gen();
+                    this.roomCode = code;
+                    return this.initPeer('hz' + code).then(resolve).catch(reject);
                 }
+                reject(err);
             });
-
-            this.peer.on('connection', (conn) => this.handleIncomingConnection(conn));
+            this.peer.on('connection', conn => this._handleConn(conn));
         });
     }
 
     async createRoom(code = null) {
         this.reset();
-        const code4 = code || this._genRoomCode();
-        this.roomCode = code4;
-        this.isHost = true;
-        this.seatIndex = 0;
+        const code4 = code || this._gen();
+        Object.assign(this, { roomCode: code4, isHost: true });
         this.playersInfo[0] = { id: 0, name: '1P (房主)', isAI: false, peerId: 'hz' + code4 };
-
         this._updateUI(code4, '(房主)');
 
         try {
             const actualId = await this.initPeer('hz' + code4);
-            const actualCode = actualId.startsWith('hz') ? actualId.substring(2) : actualId;
-            this.roomCode = actualCode;
-            this._updateUI(actualCode);
-            return actualCode;
-        } catch (err) {
-            console.warn('P2P connection warning:', err);
-            return code4;
-        }
+            this.roomCode = actualId.replace(/^hz/, '');
+            this._updateUI(this.roomCode);
+            return this.roomCode;
+        } catch (e) { return code4; }
     }
 
-    async joinRoom(targetRoomCode, savedSeatIndex = null) {
+    async joinRoom(targetCode, savedSeat = null) {
         this.reset();
-        const code = String(targetRoomCode).trim();
-        const targetId = code.startsWith('hz') ? code : ('hz' + code);
-
+        const code = String(targetCode).trim().replace(/^hz/, '');
         await this.initPeer();
-        this.isHost = false;
-        this.roomCode = code.startsWith('hz') ? code.substring(2) : code;
+        Object.assign(this, { isHost: false, roomCode: code });
 
         return new Promise((resolve, reject) => {
-            const conn = this.peer.connect(targetId, { reliable: true });
+            const conn = this.peer.connect('hz' + code, { reliable: true });
             this.hostConn = conn;
+            const timeout = setTimeout(() => reject(new Error('连接超时')), 10000);
 
-            const timeout = setTimeout(() => reject(new Error('连接超时: 未找到对应房间号或房主未在线')), 10000);
-
-            conn.on('open', () => {
+            conn.once('open', () => {
                 clearTimeout(timeout);
-                conn.send({ type: 'JOIN_REQ', peerId: this.myPeerId, seatIndex: savedSeatIndex });
+                conn.send({ type: 'JOIN_REQ', peerId: this.myPeerId, seatIndex: savedSeat });
                 resolve();
             });
-            conn.on('data', (data) => this.handleHostMessage(data));
-            conn.on('close', () => { if (typeof UIController !== 'undefined') UIController.log('房主已断开连接。'); });
-            conn.on('error', (err) => { clearTimeout(timeout); reject(err); });
+            conn.on('data', data => this._handleHostMsg(data));
+            conn.on('close', () => window.UIController?.log('房主已断开连接。'));
+            conn.once('error', err => { clearTimeout(timeout); reject(err); });
         });
     }
 
-    _updateUI(code, roleText = null) {
-        if (typeof document === 'undefined') return;
-        const codeEl = document.getElementById('room-code-display');
-        if (codeEl && code) codeEl.innerText = code;
-        if (roleText) {
-            const roleEl = document.getElementById('room-role-display');
-            if (roleEl) roleEl.innerText = roleText;
-        }
+    _updateUI(code, role = null) {
+        const set = (id, val) => { const el = document.getElementById(id); if (el && val != null) el.innerText = val; };
+        set('room-code-display', code);
+        set('room-role-display', role);
     }
 
-    handleIncomingConnection(conn) {
+    _handleConn(conn) {
         this.connections[conn.peer] = conn;
         conn.on('open', () => { this.connections[conn.peer] = conn; });
-
-        conn.on('data', (data) => {
-            if (!data || !data.type) return;
-            if (data.type === 'JOIN_REQ') {
-                let seat = null;
-                if (data.seatIndex !== undefined && data.seatIndex > 0 && data.seatIndex < 4) {
-                    seat = this.playersInfo[data.seatIndex];
+        conn.on('data', data => {
+            const H = {
+                JOIN_REQ: () => {
+                    const valid = (data.seatIndex > 0 && data.seatIndex < 4) ? this.playersInfo[data.seatIndex] : null;
+                    const seat = (valid && (valid.isAI || valid.peerId === conn.peer)) ? valid : this.playersInfo.find(p => p.id > 0 && p.isAI);
+                    if (seat) {
+                        Object.assign(seat, { isAI: false, peerId: conn.peer, name: `${seat.id + 1}P` });
+                        conn.send({ type: 'JOIN_RES', success: true, seatIndex: seat.id, playersInfo: this.playersInfo });
+                        this.broadcastRoomInfo();
+                        window.UIController?.log(`${seat.name} 已连接。`);
+                        if (window.gameController?.state) this.broadcastState(window.gameController.state);
+                    } else conn.send({ type: 'JOIN_RES', success: false, message: '房间已满员' });
+                },
+                ACTION_REQUEST: () => {
+                    const pIdx = data.playerIndex >= 0 ? data.playerIndex : this.playersInfo.find(p => p.peerId === conn.peer)?.id;
+                    this.onActionReceived?.(pIdx, data.action, data.payload);
                 }
-                if (!seat || (!seat.isAI && seat.peerId && seat.peerId !== conn.peer)) {
-                    seat = this.playersInfo.find(p => p.id > 0 && p.isAI);
-                }
-
-                if (seat) {
-                    seat.isAI = false;
-                    seat.peerId = conn.peer;
-                    seat.name = `${seat.id + 1}P`;
-                    conn.send({ type: 'JOIN_RES', success: true, seatIndex: seat.id, playersInfo: this.playersInfo });
-                    this.broadcastRoomInfo();
-                    if (typeof UIController !== 'undefined') UIController.log(`${seat.name} 已连接。`);
-                    if (typeof gameController !== 'undefined' && gameController.state) {
-                        this.broadcastState(gameController.state);
-                    }
-                } else {
-                    conn.send({ type: 'JOIN_RES', success: false, message: '房间已满员' });
-                }
-            } else if (data.type === 'ACTION_REQUEST') {
-                let pIndex = data.playerIndex;
-                if (pIndex === undefined || pIndex === null || pIndex < 0) {
-                    const found = this.playersInfo.find(p => p.peerId === conn.peer);
-                    if (found) pIndex = found.id;
-                }
-                if (this.onActionReceived) this.onActionReceived(pIndex, data.action, data.payload);
-            }
+            };
+            H[data?.type]?.();
         });
-
         conn.on('close', () => {
             delete this.connections[conn.peer];
             setTimeout(() => {
-                if (!Object.values(this.connections).some(c => c && c.peer === conn.peer)) {
-                    const p = this.playersInfo.find(x => x.peerId === conn.peer);
-                    if (p) {
-                        p.isAI = true;
-                        p.peerId = null;
-                        p.name = `${p.id + 1}P`;
-                        this.broadcastRoomInfo();
-                    }
-                }
+                const p = !Object.values(this.connections).some(c => c?.peer === conn.peer) && this.playersInfo.find(x => x.peerId === conn.peer);
+                if (p) { Object.assign(p, { isAI: true, peerId: null, name: `${p.id + 1}P` }); this.broadcastRoomInfo(); }
             }, 4000);
         });
     }
 
-    handleHostMessage(data) {
-        if (!data || !data.type) return;
-        if (data.type === 'JOIN_RES') {
-            if (data.success) {
-                this.seatIndex = data.seatIndex;
-                this.playersInfo = data.playersInfo;
-                if (this.onRoomUpdate) this.onRoomUpdate(this.playersInfo, this.seatIndex);
-                if (typeof UIController !== 'undefined') UIController.log(`已成功加入房间 (${this.seatIndex + 1}P)`);
-            } else {
-                alert(data.message || '加入房间失败');
-            }
-        } else if (data.type === 'ROOM_INFO') {
-            this.playersInfo = data.playersInfo;
-            if (this.onRoomUpdate) this.onRoomUpdate(this.playersInfo, this.seatIndex);
-        } else if (data.type === 'SYNC_STATE') {
-            if (this.onStateReceived) this.onStateReceived(data.state);
-        } else if (data.type === 'PROMPT_OFFTURN_ACTION') {
-            if (this.onPromptReceived) this.onPromptReceived(data.options);
-        }
+    _handleHostMsg(data) {
+        const H = {
+            JOIN_RES: () => {
+                if (data.success) {
+                    this.seatIndex = data.seatIndex;
+                    this.playersInfo = data.playersInfo;
+                    this.onRoomUpdate?.(this.playersInfo, this.seatIndex);
+                    window.UIController?.log(`已加入房间 (${this.seatIndex + 1}P)`);
+                } else alert(data.message || '加入失败');
+            },
+            ROOM_INFO: () => { this.playersInfo = data.playersInfo; this.onRoomUpdate?.(this.playersInfo, this.seatIndex); },
+            SYNC_STATE: () => this.onStateReceived?.(data.state),
+            PROMPT_OFFTURN_ACTION: () => this.onPromptReceived?.(data.options)
+        };
+        H[data?.type]?.();
     }
 
     broadcastRoomInfo() {
         if (!this.isHost) return;
         this.broadcast({ type: 'ROOM_INFO', playersInfo: this.playersInfo });
-        if (this.onRoomUpdate) this.onRoomUpdate(this.playersInfo, this.seatIndex);
+        this.onRoomUpdate?.(this.playersInfo, this.seatIndex);
     }
 
     broadcastState(state) {
         if (!this.isHost) return;
-        const serialized = {
-            phase: state.phase,
-            currentTurn: state.currentTurn,
-            startPlayer: state.startPlayer,
-            wallCount: state.wall ? state.wall.length : (state.wallCount || 0),
-            lastDiscard: state.lastDiscard,
-            lastActionIsGang: state.lastActionIsGang,
-            lastGangPlayer: state.lastGangPlayer,
-            logs: state.logs || [],
-            players: state.players.map(p => ({
-                id: p.id,
-                name: p.name,
-                score: p.score,
-                que: p.que,
-                isHu: p.isHu,
-                huRecords: p.huRecords,
-                melds: p.melds,
-                discards: p.discards,
-                handCount: p.hand ? p.hand.length : 0,
-                hand: p.hand
-            }))
-        };
-
-        this.broadcast({ type: 'SYNC_STATE', state: serialized });
+        this.broadcast({
+            type: 'SYNC_STATE',
+            state: {
+                phase: state.phase, gameSeed: state.gameSeed, currentTurn: state.currentTurn, startPlayer: state.startPlayer,
+                wallCount: state.remainingWall, lastDiscard: state.lastDiscard,
+                lastActionIsGang: state.lastActionIsGang, lastGangPlayer: state.lastGangPlayer,
+                logs: state.logs || [],
+                players: state.players.map(p => ({
+                    id: p.id, name: p.name, score: p.score, que: p.que, isHu: p.isHu,
+                    huRecords: p.huRecords, melds: p.melds, discards: p.discards, handCount: p.hand?.length || 0, hand: p.hand
+                }))
+            }
+        });
     }
 
     sendToSeat(seatIndex, data) {
         if (!this.isHost) return false;
-        const targetPlayer = this.playersInfo[seatIndex];
-        if (!targetPlayer || targetPlayer.isAI || !targetPlayer.peerId) return false;
-        const conn = this.connections[targetPlayer.peerId];
-        if (conn && conn.open) {
-            try { conn.send(data); return true; } catch(e) { return false; }
-        }
+        const target = this.playersInfo[seatIndex];
+        const conn = target?.peerId && this.connections[target.peerId];
+        if (conn?.open) { try { conn.send(data); return true; } catch (e) {} }
         return false;
     }
 
-    broadcast(data) {
-        Object.values(this.connections).forEach(conn => {
-            if (conn && conn.open) conn.send(data);
-        });
-    }
+    broadcast = data => Object.values(this.connections).forEach(c => { if (c?.open) c.send(data); });
 
     sendAction(action, payload = {}) {
-        if (this.isHost) return;
-        if (this.hostConn && this.hostConn.open) {
-            this.hostConn.send({
-                type: 'ACTION_REQUEST',
-                playerIndex: this.seatIndex,
-                action,
-                payload
-            });
-        }
+        if (!this.isHost && this.hostConn?.open) this.hostConn.send({ type: 'ACTION_REQUEST', playerIndex: this.seatIndex, action, payload });
     }
 }
 
