@@ -7,7 +7,7 @@ class P2PManager {
 
     reset() {
         try { if (this.peer && !this.peer.destroyed) this.peer.destroy(); } catch (e) {}
-        Object.assign(this, { peer: null, myPeerId: null, hostConn: null, roomCode: null, isHost: false, seatIndex: 0, connections: {} });
+        Object.assign(this, { peer: null, myPeerId: null, hostConn: null, roomCode: null, isHost: false, seatIndex: 0, connections: {}, _joinResolve: null, _joinReject: null });
         this.playersInfo = Array.from({ length: 4 }, (_, i) => ({ id: i, name: `${i + 1}P`, isAI: i !== 0, peerId: null }));
     }
 
@@ -17,7 +17,16 @@ class P2PManager {
             try { if (this.peer && !this.peer.destroyed) this.peer.destroy(); } catch (e) {}
 
             const id = customId || ('hz' + (this.roomCode || this._gen()));
-            try { this.peer = new Peer(id, { debug: 1, config: { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] } }); } catch (err) { return reject(err); }
+            const iceConfig = {
+                iceServers: [
+                    { urls: 'stun:stun.l.google.com:19302' },
+                    { urls: 'stun:stun1.l.google.com:19302' },
+                    { urls: 'stun:stun2.l.google.com:19302' },
+                    { urls: 'stun:global.stun.twilio.com:3478' }
+                ]
+            };
+
+            try { this.peer = new Peer(id, { debug: 1, config: iceConfig }); } catch (err) { return reject(err); }
 
             this.peer.once('open', peerId => { this.myPeerId = peerId; resolve(peerId); });
             this.peer.once('error', err => {
@@ -32,11 +41,12 @@ class P2PManager {
         });
     }
 
-    async createRoom(code = null) {
+    async createRoom(code = null, hostName = null) {
         this.reset();
         const code4 = code || this._gen();
         Object.assign(this, { roomCode: code4, isHost: true });
-        this.playersInfo[0] = { id: 0, name: '1P (房主)', isAI: false, peerId: 'hz' + code4 };
+        const name = hostName || '1P (房主)';
+        this.playersInfo[0] = { id: 0, name, isAI: false, peerId: 'hz' + code4 };
         this._updateUI(code4, '(房主)');
 
         try {
@@ -47,7 +57,7 @@ class P2PManager {
         } catch (e) { return code4; }
     }
 
-    async joinRoom(targetCode, savedSeat = null) {
+    async joinRoom(targetCode, savedSeat = null, playerName = null) {
         this.reset();
         const code = String(targetCode).trim().replace(/^hz/, '');
         await this.initPeer();
@@ -56,15 +66,18 @@ class P2PManager {
         return new Promise((resolve, reject) => {
             const conn = this.peer.connect('hz' + code, { reliable: true });
             this.hostConn = conn;
-            const timeout = setTimeout(() => reject(new Error('连接超时')), 10000);
+            const timeout = setTimeout(() => {
+                reject(new Error('连接超时：请确认房间号是否正确，且房主正在同一房间内'));
+            }, 12000);
+
+            this._joinResolve = () => { clearTimeout(timeout); resolve(); };
+            this._joinReject = err => { clearTimeout(timeout); reject(err); };
 
             conn.once('open', () => {
-                clearTimeout(timeout);
-                conn.send({ type: 'JOIN_REQ', peerId: this.myPeerId, seatIndex: savedSeat });
-                resolve();
+                conn.send({ type: 'JOIN_REQ', peerId: this.myPeerId, seatIndex: savedSeat, playerName });
             });
             conn.on('data', data => this._handleHostMsg(data));
-            conn.on('close', () => window.UIController?.log('房主已断开连接。'));
+            conn.on('close', () => window.UIController?.log('与房主的连接已断开。'));
             conn.once('error', err => { clearTimeout(timeout); reject(err); });
         });
     }
@@ -84,15 +97,17 @@ class P2PManager {
                     const valid = (data.seatIndex > 0 && data.seatIndex < 4) ? this.playersInfo[data.seatIndex] : null;
                     const seat = (valid && (valid.isAI || valid.peerId === conn.peer)) ? valid : this.playersInfo.find(p => p.id > 0 && p.isAI);
                     if (seat) {
-                        Object.assign(seat, { isAI: false, peerId: conn.peer, name: `${seat.id + 1}P` });
+                        const displayName = data.playerName || `${seat.id + 1}P`;
+                        Object.assign(seat, { isAI: false, peerId: conn.peer, name: displayName });
                         if (window.gameController?.state?.players?.[seat.id]) {
                             const p = window.gameController.state.players[seat.id];
+                            p.name = displayName;
                             p.swapTiles = [];
                             p.que = null;
                         }
                         conn.send({ type: 'JOIN_RES', success: true, seatIndex: seat.id, playersInfo: this.playersInfo });
                         this.broadcastRoomInfo();
-                        window.UIController?.log(`${seat.name} 已连接。`);
+                        window.UIController?.log(`${seat.name} 已成功连接加入。`);
                         if (window.gameController?.state) this.broadcastState(window.gameController.state);
                     } else conn.send({ type: 'JOIN_RES', success: false, message: '房间已满员' });
                 },
@@ -107,7 +122,11 @@ class P2PManager {
             delete this.connections[conn.peer];
             setTimeout(() => {
                 const p = !Object.values(this.connections).some(c => c?.peer === conn.peer) && this.playersInfo.find(x => x.peerId === conn.peer);
-                if (p) { Object.assign(p, { isAI: true, peerId: null, name: `${p.id + 1}P` }); this.broadcastRoomInfo(); }
+                if (p) {
+                    Object.assign(p, { isAI: true, peerId: null, name: `${p.id + 1}P` });
+                    if (window.gameController?.state?.players?.[p.id]) window.gameController.state.players[p.id].name = `${p.id + 1}P (电脑)`;
+                    this.broadcastRoomInfo();
+                }
             }, 4000);
         });
     }
@@ -119,8 +138,13 @@ class P2PManager {
                     this.seatIndex = data.seatIndex;
                     this.playersInfo = data.playersInfo;
                     this.onRoomUpdate?.(this.playersInfo, this.seatIndex);
-                    window.UIController?.log(`已加入房间 (${this.seatIndex + 1}P)`);
-                } else alert(data.message || '加入失败');
+                    window.UIController?.log(`已成功加入房间 (${this.playersInfo[this.seatIndex]?.name || (this.seatIndex + 1) + 'P'})`);
+                    this._joinResolve?.();
+                } else {
+                    const msg = data.message || '加入失败';
+                    alert(msg);
+                    this._joinReject?.(new Error(msg));
+                }
             },
             ROOM_INFO: () => { this.playersInfo = data.playersInfo; this.onRoomUpdate?.(this.playersInfo, this.seatIndex); },
             SYNC_STATE: () => this.onStateReceived?.(data.state),

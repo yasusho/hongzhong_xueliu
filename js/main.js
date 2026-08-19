@@ -182,8 +182,19 @@ class GameController {
     clearLog(text = '系统就绪。') { this.state.logs = [text]; this.ui.clearLog(text); }
 
     get mySeat() { return (!this.p2p?.isHost && this.p2p?.seatIndex != null) ? this.p2p.seatIndex : 0; }
+    getMyName() {
+        try { return localStorage.getItem('hz_username') || ''; } catch (e) { return ''; }
+    }
+    setMyName(name) {
+        try { localStorage.setItem('hz_username', name); } catch (e) {}
+    }
+
     isHumanPlayer = idx => this.p2p?.playersInfo?.[idx] ? !this.p2p.playersInfo[idx].isAI : idx === 0;
-    getPlayerDisplayName = idx => `${idx + 1}P (${idx === this.mySeat ? (this.p2p?.isHost ? '你/房主' : '你') : (this.isHumanPlayer(idx) ? '玩家' : '电脑')})`;
+    getPlayerDisplayName = idx => {
+        const info = this.p2p?.playersInfo?.[idx];
+        if (info?.name) return info.name;
+        return `${idx + 1}P (${idx === this.mySeat ? (this.p2p?.isHost ? '你/房主' : '你') : (this.isHumanPlayer(idx) ? '玩家' : '电脑')})`;
+    };
 
     updateRoomMembersDisplay() {
         const el = UIController.$('room-members-display');
@@ -232,9 +243,34 @@ class GameController {
         this.startSwap3Phase();
     }
 
+    handleChangeName() {
+        const current = this.getMyName() || (this.p2p?.isHost ? '1P (房主)' : `${this.mySeat + 1}P`);
+        const input = prompt('请输入你的玩家昵称 (最多8字):', current);
+        if (input == null) return;
+        const name = input.trim().slice(0, 8) || `${this.mySeat + 1}P`;
+        this.setMyName(name);
+
+        if (this.p2p?.isHost) {
+            this.p2p.playersInfo[0].name = `${name} (房主)`;
+            this.state.players[0].name = `${name} (房主)`;
+            this.p2p.broadcastRoomInfo();
+            this.syncStateToPeers();
+            this.updateRoomMembersDisplay();
+            this.ui.render(this.state, this.mySeat);
+            this.log(`房主昵称已修改为: ${name}`);
+        } else {
+            if (this.state.players[this.mySeat]) this.state.players[this.mySeat].name = name;
+            this.p2p?.sendAction('SET_NAME', { name });
+            this.updateRoomMembersDisplay();
+            this.ui.render(this.state, this.mySeat);
+            this.log(`昵称已修改为: ${name}`);
+        }
+    }
+
     async handleCreateRoom(code = null) {
         try {
-            const c = await this.p2p.createRoom(code);
+            const hostName = this.getMyName() ? `${this.getMyName()} (房主)` : '1P (房主)';
+            const c = await this.p2p.createRoom(code, hostName);
             this.showRoomBar(c, '房主');
             this.updateRoomMembersDisplay();
             sessionStorage.setItem('hz_session', JSON.stringify({ role: 'host', roomCode: c }));
@@ -253,13 +289,14 @@ class GameController {
         const code = inputCode || prompt('请输入4位房间号:');
         if (!code) return;
         try {
-            this.log(`正在加入房间 ${code}...`);
-            await this.p2p.joinRoom(code.trim(), savedSeat);
+            this.log(`正在连接房间 ${code.trim()}...`);
+            const myName = this.getMyName() || null;
+            await this.p2p.joinRoom(code.trim(), savedSeat, myName);
             this.isOnline = true;
             this.showRoomBar(this.p2p.roomCode, '玩家');
             this.updateRoomMembersDisplay();
             sessionStorage.setItem('hz_session', JSON.stringify({ role: 'client', roomCode: this.p2p.roomCode, seatIndex: this.p2p.seatIndex }));
-            this.log(`已加入房间 ${code}，等待房主开始对局...`);
+            this.log(`已加入房间 ${code.trim()}，等待房主开始对局...`);
         } catch (err) { alert('加入房间失败: ' + (err.message || err)); }
     }
 
@@ -718,6 +755,18 @@ class GameController {
         if (!p) return;
 
         const H = {
+            SET_NAME: () => {
+                if (payload.name && this.p2p?.playersInfo?.[playerIndex]) {
+                    const newName = String(payload.name).trim().slice(0, 8);
+                    this.p2p.playersInfo[playerIndex].name = newName;
+                    p.name = newName;
+                    this.p2p.broadcastRoomInfo();
+                    this.syncStateToPeers();
+                    this.updateRoomMembersDisplay();
+                    this.ui.render(this.state, this.mySeat);
+                    this.log(`${playerIndex + 1}P 更名为: ${newName}`);
+                }
+            },
             CONFIRM_SWAP: () => {
                 p.swapTiles = payload.swapTileIds ? payload.swapTileIds.map(id => p.hand.find(x => x.id === id)).filter(Boolean) : (payload.swapTiles || []).map(t => p.hand.find(x => x.suit === t.suit && x.num === t.num)).filter(Boolean);
                 if (p.swapTiles?.length !== 3) p.swapTiles = p.hand.filter(t => t.suit !== 'HZ').slice(0, 3);
