@@ -4,6 +4,7 @@ body {
     margin: 10px auto;
     padding: 0 8px;
     user-select: none;
+    font-family: sans-serif;
 }
 
 /* ヘッダー */
@@ -80,7 +81,7 @@ tr.turn-active {
 }
 
 .river-label {
-    width: 45px;
+    width: 60px;
     font-weight: bold;
     font-size: 13px;
     color: black;
@@ -253,6 +254,13 @@ tr.turn-active {
     font-size: 12px;
     margin-top: 8px;
     color: gray;
+}
+
+.result-rank-row {
+    display: flex;
+    justify-content: space-between;
+    margin: 6px 0;
+    font-size: 14px;
 }
 
 .modal-content button {

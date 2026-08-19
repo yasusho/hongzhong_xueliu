@@ -7,6 +7,7 @@ class P2PManager {
         this.onStateReceived = null;
         this.onActionReceived = null;
         this.onRoomUpdate = null;
+        this.onPromptReceived = null;
     }
 
     reset() {
@@ -90,24 +91,30 @@ class P2PManager {
 
     async joinRoom(targetRoomCode) {
         this.reset();
+        let targetId = targetRoomCode.trim();
+        if (!targetId.startsWith('hz') && /^\d+$/.test(targetId)) {
+            targetId = 'hz' + targetId;
+        }
+
         await this.initPeer();
         this.isHost = false;
-        this.roomCode = targetRoomCode;
+        this.roomCode = targetId;
 
         return new Promise((resolve, reject) => {
-            const conn = this.peer.connect(targetRoomCode, { reliable: true });
+            const conn = this.peer.connect(targetId, { reliable: true });
             this.hostConn = conn;
 
             const timeout = setTimeout(() => {
                 reject(new Error('连接超时: 未找到对应房间号或房主未在线'));
             }, 10000);
 
-            conn.on('open', () => {
+            const onOpen = () => {
                 clearTimeout(timeout);
                 conn.send({ type: 'JOIN_REQ', peerId: this.myPeerId });
                 resolve();
-            });
+            };
 
+            conn.on('open', onOpen);
             conn.on('data', (data) => this.handleHostMessage(data));
             conn.on('close', () => {
                 if (typeof UIController !== 'undefined') UIController.log('房主已断开连接。');
@@ -120,6 +127,8 @@ class P2PManager {
     }
 
     handleIncomingConnection(conn) {
+        this.connections[conn.peer] = conn;
+
         conn.on('open', () => {
             this.connections[conn.peer] = conn;
         });
@@ -179,6 +188,8 @@ class P2PManager {
             if (this.onRoomUpdate) this.onRoomUpdate(this.playersInfo, this.seatIndex);
         } else if (data.type === 'SYNC_STATE') {
             if (this.onStateReceived) this.onStateReceived(data.state);
+        } else if (data.type === 'PROMPT_OFFTURN_ACTION') {
+            if (this.onPromptReceived) this.onPromptReceived(data.options);
         }
     }
 
@@ -194,9 +205,10 @@ class P2PManager {
             phase: state.phase,
             currentTurn: state.currentTurn,
             startPlayer: state.startPlayer,
-            wallCount: state.wall ? state.wall.length : 0,
+            wallCount: state.wall ? state.wall.length : (state.wallCount || 0),
             lastDiscard: state.lastDiscard,
             lastActionIsGang: state.lastActionIsGang,
+            lastGangPlayer: state.lastGangPlayer,
             players: state.players.map(p => ({
                 id: p.id,
                 name: p.name,
@@ -206,7 +218,7 @@ class P2PManager {
                 huRecords: p.huRecords,
                 melds: p.melds,
                 discards: p.discards,
-                handCount: p.hand.length,
+                handCount: p.hand ? p.hand.length : 0,
                 hand: p.hand
             }))
         };
@@ -214,6 +226,17 @@ class P2PManager {
         Object.values(this.connections).forEach(conn => {
             if (conn && conn.open) conn.send({ type: 'SYNC_STATE', state: serialized });
         });
+    }
+
+    sendToSeat(seatIndex, data) {
+        if (!this.isHost) return;
+        const targetPlayer = this.playersInfo[seatIndex];
+        if (!targetPlayer || targetPlayer.isAI || !targetPlayer.peerId) return;
+
+        const conn = this.connections[targetPlayer.peerId];
+        if (conn && conn.open) {
+            conn.send(data);
+        }
     }
 
     broadcast(data) {

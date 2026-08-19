@@ -52,7 +52,8 @@ class GameState {
     }
 
     isGameOver() {
-        return this.wall.length === 0 || this.players.some(p => p.score <= 0);
+        const wallEmpty = this.wall ? (this.wall.length === 0) : (this.wallCount !== undefined && this.wallCount === 0);
+        return wallEmpty || this.players.some(p => p.score <= 0);
     }
 }
 

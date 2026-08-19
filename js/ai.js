@@ -3,7 +3,7 @@
  */
 class MahjongAI {
     /**
-     * 換三張：枚数の少ない花色の孤立牌から3枚選出
+     * 換三張：枚数の少ない花色の孤立牌から3枚選出（花色をまたいだ選出も許容）
      */
     static getSwapTiles(hand) {
         const suitCounts = { W: 0, T: 0, B: 0 };
@@ -11,7 +11,7 @@ class MahjongAI {
 
         hand.forEach(tile => {
             if (tile.suit !== 'HZ') {
-                suitCounts[tile.suit]++;
+                if (suitCounts[tile.suit] !== undefined) suitCounts[tile.suit]++;
                 nonHzTiles.push(tile);
             }
         });
@@ -20,6 +20,9 @@ class MahjongAI {
             if (suitCounts[a.suit] !== suitCounts[b.suit]) {
                 return suitCounts[a.suit] - suitCounts[b.suit];
             }
+            const scoreA = this.evaluateTileIsolation(nonHzTiles, a);
+            const scoreB = this.evaluateTileIsolation(nonHzTiles, b);
+            if (scoreA !== scoreB) return scoreB - scoreA;
             return a.num - b.num;
         });
 

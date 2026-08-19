@@ -13,7 +13,7 @@
     <header class="game-header">
         <h1 class="game-title">红中血流成河麻将</h1>
         <div class="header-actions">
-            <button onclick="gameController.initGame()">开始游戏</button>
+            <button onclick="gameController.initGame(false)">开始游戏</button>
             <button id="btn-auto">托管: 关</button>
             <button onclick="gameController.handleCreateRoom()">创建房间</button>
             <button onclick="gameController.handleJoinRoom()">加入房间</button>
@@ -66,7 +66,7 @@
 
     <!-- 自分の手牌ゾーン -->
     <fieldset class="my-section">
-        
+        <legend id="my-seat-label" style="font-weight:bold;"></legend>
         <div class="my-status-bar">
             <span>积分: <b id="hand-score-0">5000</b></span>
             <span class="tag-que" id="hand-que-0"></span>
@@ -108,7 +108,7 @@
             <h3>对局结算</h3>
             <div id="result-ranks"></div>
             <div id="result-penalties" class="result-penalties"></div>
-            <button class="btn-restart" onclick="gameController.initGame()">再来一局</button>
+            <button class="btn-restart" onclick="gameController.initGame(false)">再来一局</button>
         </div>
     </div>
 

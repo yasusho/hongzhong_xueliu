@@ -27,7 +27,9 @@ class UIController {
      */
     static render(state, mySeat = 0) {
         if (!this.wallNumEl) this.init();
-        if (this.wallNumEl) this.wallNumEl.innerText = state.wall ? state.wall.length : (state.wallCount || 0);
+
+        const wallCount = (state.wall && Array.isArray(state.wall)) ? state.wall.length : (state.wallCount !== undefined ? state.wallCount : 0);
+        if (this.wallNumEl) this.wallNumEl.innerText = wallCount;
 
         const isQueAnnounced = (state.phase === CONFIG.PHASES.PLAYING || state.phase === CONFIG.PHASES.END);
 
@@ -49,6 +51,7 @@ class UIController {
 
                 // 積分
                 const tdScore = document.createElement('td');
+                tdScore.className = 'player-score';
                 tdScore.innerText = player.score;
 
                 // 定缺/状態
@@ -128,7 +131,7 @@ class UIController {
             this.renderHand(myPlayer, state, mySeat);
 
             if (this.autoHuMsgEl) {
-                this.autoHuMsgEl.style.display = (myPlayer.isHu && state.autoPlay) ? 'inline' : 'none';
+                this.autoHuMsgEl.style.display = (myPlayer.isHu && state.autoPlay) ? 'inline-block' : 'none';
             }
         }
     }
@@ -193,7 +196,11 @@ class UIController {
                 }
 
                 if (isMyTurn) {
-                    if (hasQueTiles) {
+                    if (player.isHu) {
+                        // 和了後はツモ牌のみ打牌可能
+                        if (index === player.hand.length - 1) el.classList.add('tile-playable');
+                        else el.classList.add('tile-disabled');
+                    } else if (hasQueTiles) {
                         if (tile.suit === player.que) el.classList.add('tile-playable');
                         else el.classList.add('tile-disabled');
                     } else {
@@ -313,19 +320,33 @@ class UIController {
         if (!this.resultModalEl) this.init();
         const sorted = [...players].sort((a, b) => b.score - a.score);
         this.resultRanksEl.innerHTML = sorted.map((p, idx) => `
-            <div style="display:flex; justify-content:space-between; margin:6px 0; font-size:14px;">
-                <span>${idx + 1}位 ${p.name}</span>
-                <span><b>${p.score}分</b> 胡${p.huRecords.length}</span>
+            <div class="result-rank-row">
+                <span class="rank-name">${idx + 1}位 ${p.name}</span>
+                <span class="rank-score"><b>${p.score}分</b> (胡${p.huRecords.length}次)</span>
             </div>
         `).join('');
 
         if (this.resultPenaltiesEl) {
             if (penaltyLogs.length > 0) {
-                this.resultPenaltiesEl.innerHTML = `<b style="display:block;margin-top:4px;">清算:</b>` + penaltyLogs.map(l => `・${l}`).join('<br>');
+                this.resultPenaltiesEl.innerHTML = `<b class="penalties-title">清算明细:</b>` + penaltyLogs.map(l => `<div class="penalty-item">${l}</div>`).join('');
                 this.resultPenaltiesEl.style.display = 'block';
             } else {
                 this.resultPenaltiesEl.innerHTML = '';
                 this.resultPenaltiesEl.style.display = 'none';
+            }
+        }
+
+        const restartBtn = this.resultModalEl.querySelector('.btn-restart');
+        if (restartBtn) {
+            const ctrl = window.gameController || (typeof gameController !== 'undefined' ? gameController : null);
+            if (ctrl && ctrl.isOnline) {
+                restartBtn.innerText = (ctrl.p2p && ctrl.p2p.isHost) ? '再来一局 (房主开始)' : '等待房主再来一局';
+                restartBtn.disabled = !(ctrl.p2p && ctrl.p2p.isHost);
+                restartBtn.onclick = () => ctrl.startOnlineMatch();
+            } else {
+                restartBtn.innerText = '再来一局';
+                restartBtn.disabled = false;
+                restartBtn.onclick = () => { if (ctrl) ctrl.initGame(false); };
             }
         }
 
@@ -342,3 +363,4 @@ class UIController {
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = UIController;
 }
+

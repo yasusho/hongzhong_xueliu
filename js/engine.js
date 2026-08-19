@@ -153,7 +153,8 @@ class MahjongEngine {
                         return true;
                     }
                     counts[s][n] += 2;
-                } else if (counts[s][n] === 1 && wildCount >= 1) {
+                }
+                if (counts[s][n] >= 1 && wildCount >= 1) {
                     counts[s][n] -= 1;
                     if (this.canFormMeldsAll(counts, wildCount - 1)) {
                         counts[s][n] += 1;
