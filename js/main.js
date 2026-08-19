@@ -45,7 +45,7 @@ class GameController {
         this.p2p.onRoomUpdate = (playersInfo, mySeat) => {
             const membersEl = typeof document !== 'undefined' ? document.getElementById('room-members-display') : null;
             if (membersEl) {
-                membersEl.innerText = playersInfo.map(p => `${p.id + 1}P${p.isAI ? '(CPU)' : (p.id === this.mySeat ? '(你)' : '(人)')}`).join(' ');
+                membersEl.innerText = playersInfo.map(p => `${p.id + 1}P`).join(' ');
             }
         };
     }
@@ -67,17 +67,10 @@ class GameController {
         this.state.reset();
 
         // プレイヤー表示名の設定
-        if (this.p2p && this.p2p.playersInfo) {
-            this.p2p.playersInfo.forEach((pInfo, idx) => {
-                if (this.state.players[idx]) {
-                    this.state.players[idx].name = `${idx + 1}P${pInfo.isAI ? ' (CPU)' : (idx === this.mySeat ? ' (你)' : '')}`;
-                }
-            });
-        } else {
-            this.state.players[0].name = '1P (你)';
-            this.state.players[1].name = '2P (CPU)';
-            this.state.players[2].name = '3P (CPU)';
-            this.state.players[3].name = '4P (CPU)';
+        for (let i = 0; i < CONFIG.TOTAL_PLAYERS; i++) {
+            if (this.state.players[i]) {
+                this.state.players[i].name = `${i + 1}P`;
+            }
         }
 
         const startPlayer = Math.floor(Math.random() * CONFIG.TOTAL_PLAYERS);
@@ -895,8 +888,13 @@ class GameController {
 
     handleRemoteStateSync(remoteState) {
         const savedSelectedIndices = this.state.selectedSwapIndices || [];
+        const savedMyQue = (this.state.players[this.mySeat] && this.state.players[this.mySeat].que) ? this.state.players[this.mySeat].que : null;
         this.state.wall = null;
         Object.assign(this.state, remoteState);
+
+        if (savedMyQue && this.state.players[this.mySeat] && !this.state.players[this.mySeat].que) {
+            this.state.players[this.mySeat].que = savedMyQue;
+        }
 
         if (this.state.phase === CONFIG.PHASES.SWAP3) {
             this.state.selectedSwapIndices = savedSelectedIndices;

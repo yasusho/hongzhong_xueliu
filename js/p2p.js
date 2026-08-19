@@ -183,8 +183,13 @@ class P2PManager {
                     conn.send({ type: 'JOIN_RES', success: false, message: '房间已满员' });
                 }
             } else if (data.type === 'ACTION_REQUEST') {
+                let pIndex = data.playerIndex;
+                if (pIndex === undefined || pIndex === null || pIndex < 0) {
+                    const found = this.playersInfo.find(p => p.peerId === conn.peer);
+                    if (found) pIndex = found.id;
+                }
                 if (this.onActionReceived) {
-                    this.onActionReceived(data.playerIndex, data.action, data.payload);
+                    this.onActionReceived(pIndex, data.action, data.payload);
                 }
             }
         });
@@ -198,7 +203,7 @@ class P2PManager {
                     if (p) {
                         p.isAI = true;
                         p.peerId = null;
-                        p.name = `${p.id + 1}P (CPU)`;
+                        p.name = `${p.id + 1}P`;
                         this.broadcastRoomInfo();
                     }
                 }
