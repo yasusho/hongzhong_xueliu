@@ -90,7 +90,7 @@ class UIController {
     static applyPinyinMode(isPinyin) {
         if (_PinyinHelper) _PinyinHelper.isPinyin = isPinyin;
         const set = (id, zh, py) => { const el = this.$(id); if (el) el.innerText = isPinyin ? py : zh; };
-        set('game-title', '红中血流成河麻将', 'Hóngzhōng Xuèliú Chénghé Mâjiàng');
+        set('game-title', '红中血流成河麻将', 'Hóngzhōng Xuèliú Chénghé Mǎjiàng');
         set('btn-start', '开始对局', 'Kāishǐ Duìjú');
         set('btn-join', '加入房间', 'Jiārù Fángjiān');
         set('lbl-room-code', '房间号', 'Fángjiānhào');
@@ -110,6 +110,11 @@ class UIController {
         set('lbl-result-title', '对局结算', 'Duìjú Jiésuàn');
         set('btn-reset-room', '新建房间 (重置)', 'Xīnjiàn Fángjiān (Chóngzhì)');
         set('auto-hu-msg', '已胡牌（自动摸打中）', 'Yǐ Hú (Zìdòng mō dǎ zhōng)');
+
+        const setTitle = (id, zh, py) => { const el = this.$(id); if (el) el.title = isPinyin ? py : zh; };
+        setTitle('btn-change-room', '重新生成4位房间号', 'Chóngxīn shēngchéng 4 wèi fángjiānhào');
+        setTitle('btn-change-name', '修改你的显示昵称', 'Xiūgǎi nǐ de xiǎnshì nǐchēng');
+        setTitle('btn-pinyin', '切换拼音/汉字显示', 'Qiēhuàn pīnyīn/hànzì xiǎnshì');
 
         const roleEl = this.$('room-role-display');
         if (roleEl) {
@@ -331,7 +336,7 @@ class GameController {
         if (el) {
             el.innerHTML = [0, 1, 2, 3].map(i => {
                 const name = pyT(this.getMemberBadgeName(i));
-                return `<span class="member-badge ${this.isHumanPlayer(i) ? 'human' : 'cpu'}" onclick="${i === this.mySeat ? 'gameController.handleChangeName()' : ''}" title="${i === this.mySeat ? (this.pinyinMode ? 'Dīanjī xiūgǎi nǐchēng' : '点击修改昵称') : ''}">${name}</span>`;
+                return `<span class="member-badge ${this.isHumanPlayer(i) ? 'human' : 'cpu'}" onclick="${i === this.mySeat ? 'gameController.handleChangeName()' : ''}" title="${i === this.mySeat ? (this.pinyinMode ? 'Diǎnjī xiūgǎi nǐchēng' : '点击修改昵称') : ''}">${name}</span>`;
             }).join(' ');
         }
     }

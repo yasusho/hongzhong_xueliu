@@ -3,17 +3,17 @@
  */
 
 const PINYIN_DICT = {
-    // 牌名
+    // 牌名 (万 / 筒 / 条 / 红中) - 筒は第3声 (Tǒng / tǒng)
     '1万': '1 Wàn', '2万': '2 Wàn', '3万': '3 Wàn', '4万': '4 Wàn', '5万': '5 Wàn',
     '6万': '6 Wàn', '7万': '7 Wàn', '8万': '8 Wàn', '9万': '9 Wàn',
-    '1筒': '1 Tóng', '2筒': '2 Tóng', '3筒': '3 Tóng', '4筒': '4 Tóng', '5筒': '5 Tóng',
-    '6筒': '6 Tóng', '7筒': '7 Tóng', '8筒': '8 Tóng', '9筒': '9 Tóng',
+    '1筒': '1 Tǒng', '2筒': '2 Tǒng', '3筒': '3 Tǒng', '4筒': '4 Tǒng', '5筒': '5 Tǒng',
+    '6筒': '6 Tǒng', '7筒': '7 Tǒng', '8筒': '8 Tǒng', '9筒': '9 Tǒng',
     '1条': '1 Tiáo', '2条': '2 Tiáo', '3条': '3 Tiáo', '4条': '4 Tiáo', '5条': '5 Tiáo',
     '6条': '6 Tiáo', '7条': '7 Tiáo', '8条': '8 Tiáo', '9条': '9 Tiáo',
     '红中': 'Hóngzhōng',
 
     // UI・タイトル・ボタン
-    '红中血流成河麻将': 'Hóngzhōng Xuèliú Chénghé Mâjiàng',
+    '红中血流成河麻将': 'Hóngzhōng Xuèliú Chénghé Mǎjiàng',
     '开始对局': 'Kāishǐ Duìjú',
     '加入房间': 'Jiārù Fángjiān',
     '换号': 'Huànhào',
@@ -24,7 +24,6 @@ const PINYIN_DICT = {
     '定缺/状态': 'Dìngquē / Zhuàngtài',
     '副露': 'Fùlù',
     '剩余牌山': 'Shèngyú Páishān',
-    '张': 'zhāng',
     '弃牌区': 'Qìpái Qū',
     '日志': 'Rìzhì',
     '听牌': 'Tīngpái',
@@ -34,7 +33,7 @@ const PINYIN_DICT = {
     '定缺': 'Dìngquē',
     '请选择定缺门类': 'Qǐng xuǎnzé dìngquē ménlèi',
     '缺万': 'Quē Wàn',
-    '缺筒': 'Quē Tóng',
+    '缺筒': 'Quē Tǒng',
     '缺条': 'Quē Tiáo',
     '对局结算': 'Duìjú Jiésuàn',
     '再来一局': 'Zàilái Yìjú',
@@ -83,7 +82,7 @@ const PINYIN_DICT = {
     '次': 'cì',
     '张': 'zhāng',
 
-    // 短縮ログ文
+    // ログ文 (キャピタライゼーション統一)
     '新局开始，': 'Xīnjú kāishǐ, ',
     '起家': 'qǐjiā',
     '[杠]': '[Gàng]',
@@ -123,22 +122,31 @@ class PinyinHelper {
     static t(text) {
         if (!this.isPinyin || !text) return text;
         if (PINYIN_DICT[text]) return PINYIN_DICT[text];
+
         let res = String(text);
+
+        // 1. 単位の先行整形 (数字 + 漢字単位をスペース付きピンインに確実変換)
+        res = res
+            .replace(/(\d+)\s*番/g, ' $1 fān')
+            .replace(/(\d+)\s*分/g, ' $1 fēn')
+            .replace(/(\d+)\s*根/g, ' $1 gēn')
+            .replace(/(\d+)\s*张/g, ' $1 zhāng')
+            .replace(/(\d+)\s*位/g, ' $1 wèi')
+            .replace(/(\d+)\s*次/g, ' $1 cì');
+
+        // 2. 辞書フレーズの長さ降順置換
         for (const k of this.sortedKeys) {
             if (res.includes(k)) {
                 res = res.split(k).join(PINYIN_DICT[k]);
             }
         }
 
-        // 自然なスペーシングと単位の整形
+        // 3. スペーシング・句読点の正規化
         res = res
             .replace(/\)(Quē|quē|Wánjiā|Diànnǎo|Fángzhǔ|qǐjiā)/g, ') $1')
-            .replace(/(\d+)\s*番/g, '$1 fān')
-            .replace(/(\d+)\s*分/g, '$1 fēn')
-            .replace(/(\d+)\s*根/g, '$1 gēn')
-            .replace(/(\d+)\s*张/g, '$1 zhāng')
-            .replace(/(\d+)\s*位/g, '$1 wèi')
-            .replace(/(\d+)\s*次/g, '$1 cì')
+            .replace(/(\d+)\s*(fān|fēn|gēn|zhāng|wèi|cì)\b/g, '$1 $2')
+            .replace(/\(\s+/g, '(')
+            .replace(/\s+\)/g, ')')
             .replace(/，/g, ', ')
             .replace(/、/g, ', ')
             .replace(/\s{2,}/g, ' ')
