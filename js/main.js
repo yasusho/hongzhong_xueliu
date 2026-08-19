@@ -304,6 +304,9 @@ class GameController {
             const myName = this.getMyName() || null;
             await this.p2p.joinRoom(code.trim(), savedSeat, myName);
             this.isOnline = true;
+            this.state.reset();
+            this.state.players.forEach(p => { p.swapTiles = []; p.que = null; });
+            this.state.selectedSwapIndices = [];
             this.showRoomBar(this.p2p.roomCode, '玩家');
             this.updateRoomMembersDisplay();
             sessionStorage.setItem('hz_session', JSON.stringify({ role: 'client', roomCode: this.p2p.roomCode, seatIndex: this.p2p.seatIndex }));
@@ -698,8 +701,16 @@ class GameController {
     }
 
     handleRemoteStateSync(remoteState) {
-        const savedIndices = this.state.selectedSwapIndices || [], savedQue = this.state.players[this.mySeat]?.que;
-        const mySwapTiles = this.state.players[this.mySeat]?.swapTiles;
+        const isNewGame = Boolean(remoteState.gameSeed && this.state.gameSeed !== remoteState.gameSeed);
+
+        if (isNewGame) {
+            this.state.selectedSwapIndices = [];
+            if (this.state.players) this.state.players.forEach(p => { p.swapTiles = []; p.que = null; });
+        }
+
+        const savedIndices = isNewGame ? [] : (this.state.selectedSwapIndices || []);
+        const savedQue = isNewGame ? null : this.state.players[this.mySeat]?.que;
+        const mySwapTiles = isNewGame ? [] : this.state.players[this.mySeat]?.swapTiles;
 
         // DSL PRNGによる山と配牌の決定論的同期
         if (remoteState.gameSeed && this.state.gameSeed !== remoteState.gameSeed && remoteState.phase !== CONFIG.PHASES.INIT) {
@@ -714,7 +725,7 @@ class GameController {
 
         Object.assign(this.state, remoteState);
 
-        // クライアント側の確定・選択状態の保護
+        // クライアント側の確定・選択状態の保護（同局内のみ）
         if (savedQue && this.state.players[this.mySeat] && !this.state.players[this.mySeat].que) {
             this.state.players[this.mySeat].que = savedQue;
         }
@@ -729,7 +740,7 @@ class GameController {
             [CONFIG.PHASES.SWAP3]: () => {
                 this.state.selectedSwapIndices = savedIndices;
                 const myP = this.state.players[this.mySeat], c = this.state.selectedSwapIndices.length;
-                if (myP?.swapTiles?.length !== 3) {
+                if (!myP?.swapTiles || myP.swapTiles.length !== 3) {
                     this.ui.showInstruction('换三张', '选3张牌', `<button id="btn-confirm-swap" ${c === 3 ? '' : 'disabled'} onclick="gameController.confirmUserSwap()">确定 (${c}/3)</button>`);
                 } else this.ui.hideInstruction();
             },
