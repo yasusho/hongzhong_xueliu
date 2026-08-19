@@ -2,7 +2,13 @@
  * 紅中血流成河麻雀 - UI描画・サウンド・ゲーム進行コントローラー (UIController, SoundManager, GameController)
  */
 
-// --- 1. サウンド管理 (SoundManager) ---
+// --- 1. ピンインモジュール参照 (PinyinHelper) ---
+const _PinyinHelper = (typeof PinyinHelper !== 'undefined') ? PinyinHelper : ((typeof require !== 'undefined') ? require('./pinyin.js').PinyinHelper : null);
+const _PINYIN_DICT = (typeof PINYIN_DICT !== 'undefined') ? PINYIN_DICT : ((typeof require !== 'undefined') ? require('./pinyin.js').PINYIN_DICT : null);
+
+const pyT = text => _PinyinHelper ? _PinyinHelper.t(text) : text;
+
+// --- 2. サウンド管理 (SoundManager) ---
 class SoundManager {
     constructor() {
         if (typeof window === 'undefined') return;
@@ -74,12 +80,49 @@ class SoundManager {
 }
 const soundManager = new SoundManager();
 
-// --- 2. UI描画・表示管理 (UIController) ---
+// --- 3. UI描画・表示管理 (UIController) ---
 class UIController {
     static $ = id => (typeof document !== 'undefined' ? document.getElementById(id) : null);
     static getTileHtml = (t, extra = '') => !t ? '' : `<img class="tile-img ${extra}".trim() src="${MahjongEngine.tileToSvgPath(t)}" alt="${MahjongEngine.tileToString(t)}" draggable="false" />`;
     static getMeldsHtml = (melds, size = 'normal') => !melds?.length ? (size === 'small' ? '-' : '') : melds.map(m => `<span class="meld-group">${this.getTileHtml(m.tile, size === 'small' ? 'tile-small' : '').repeat(m.type === 'PUNG' ? 3 : 4)}</span>`).join('');
     static getDiscardsHtml = (discards, last) => (discards || []).map(t => this.getTileHtml(t, `tile-river${last?.tile?.id === t.id ? ' latest' : ''}`)).join('');
+
+    static applyPinyinMode(isPinyin) {
+        if (_PinyinHelper) _PinyinHelper.isPinyin = isPinyin;
+        const set = (id, zh, py) => { const el = this.$(id); if (el) el.innerText = isPinyin ? py : zh; };
+        set('game-title', '红中血流成河麻将', 'Hóngzhōng Xuèliú Chénghé Mâjiàng');
+        set('btn-start', '开始对局', 'Kāishǐ Duìjú');
+        set('btn-join', '加入房间', 'Jiārù Fángjiān');
+        set('lbl-room-code', '房间号', 'Fángjiānhào');
+        set('btn-change-room', '换号', 'Huànhào');
+        set('btn-change-name', '改名', 'Gǎimíng');
+        set('th-player', '玩家', 'Wánjiā');
+        set('th-score', '积分', 'Jīfēn');
+        set('th-state', '定缺/状态', 'Dìngquē / Zhuàngtài');
+        set('th-melds', '副露', 'Fùlù');
+        set('td-wall-lbl', '剩余牌山', 'Shèngyú Páishān');
+        set('lbl-tiles-unit', '张', 'zhāng');
+        set('legend-river', '弃牌区', 'Qìpái Qū');
+        set('legend-log', '日志', 'Rìzhì');
+        set('lbl-my-score', '积分', 'Jīfēn');
+        set('lbl-ting', '听牌', 'Tīngpái');
+        set('btn-pinyin', '汉↔A', 'A↔汉');
+        set('lbl-result-title', '对局结算', 'Duìjú Jiésuàn');
+        set('btn-reset-room', '新建房间 (重置)', 'Xīnjiàn Fángjiān (Chóngzhì)');
+        set('auto-hu-msg', '已胡牌（自动摸打中）', 'Yǐ Hú (Zìdòng mō dǎ zhōng)');
+
+        const roleEl = this.$('room-role-display');
+        if (roleEl) {
+            const ctrl = (typeof window !== 'undefined') ? window.gameController : null;
+            const isClient = (ctrl?.isOnline && !ctrl?.p2p?.isHost);
+            roleEl.innerText = isClient ? (isPinyin ? '(Wánjiā)' : '(玩家)') : (isPinyin ? '(Fángzhǔ)' : '(房主)');
+        }
+
+        const autoBtn = this.$('btn-auto');
+        if (autoBtn && window.gameState) {
+            autoBtn.innerText = isPinyin ? `Tuōguǎn: ${window.gameState.autoPlay ? 'Kāi' : 'Guān'}` : `托管: ${window.gameState.autoPlay ? '开' : '关'}`;
+        }
+    }
 
     static render(state, mySeat = 0) {
         const wall = this.$('wall-num');
@@ -93,9 +136,9 @@ class UIController {
         if (tbody) {
             tbody.innerHTML = opps.map(i => state.players[i]).filter(Boolean).map(p => `
                 <tr class="${state.phase === CONFIG.PHASES.PLAYING && state.currentTurn === p.id ? 'turn-active' : ''}">
-                    <td>${p.name}${state.phase === CONFIG.PHASES.PLAYING && state.currentTurn === p.id ? ' [手番]' : ''}</td>
+                    <td>${pyT(p.name)}${state.phase === CONFIG.PHASES.PLAYING && state.currentTurn === p.id ? ` [${pyT('手番')}]` : ''}</td>
                     <td class="player-score">${p.score}</td>
-                    <td>${(isQue && p.que) ? `<span class="tag-que">缺${CONFIG.SUITS[p.que]}</span> ` : ''}${p.isHu ? `<span class="tag-hu">已胡${p.huRecords.length}</span>` : ''}</td>
+                    <td>${(isQue && p.que) ? `<span class="tag-que">${pyT('缺' + CONFIG.SUITS[p.que])}</span> ` : ''}${p.isHu ? `<span class="tag-hu">${pyT('已胡')}${p.huRecords.length}</span>` : ''}</td>
                     <td>${this.getMeldsHtml(p.melds, 'small')}</td>
                 </tr>`).join('');
         }
@@ -103,7 +146,7 @@ class UIController {
         const river = this.$('river-container');
         if (river) {
             river.innerHTML = [...opps, mySeat].map(i => state.players[i]).filter(Boolean).map(p => `
-                <div class="river-row"><span class="river-label">${p.name}:</span><span class="river-tiles">${this.getDiscardsHtml(p.discards, state.lastDiscard)}</span></div>`).join('');
+                <div class="river-row"><span class="river-label">${pyT(p.name)}:</span><span class="river-tiles">${this.getDiscardsHtml(p.discards, state.lastDiscard)}</span></div>`).join('');
         }
 
         const myP = state.players[mySeat];
@@ -113,9 +156,14 @@ class UIController {
             }
             const set = (id, txt) => { const el = this.$(id); if (el) el.innerText = txt; };
             set('hand-score-0', myP.score);
-            set('hand-que-0', (isQue && myP.que) ? `缺${CONFIG.SUITS[myP.que]}` : '');
-            set('hu-tag-0', myP.isHu ? `已胡${myP.huRecords.length}` : '');
+            set('hand-que-0', (isQue && myP.que) ? pyT(`缺${CONFIG.SUITS[myP.que]}`) : '');
+            set('hu-tag-0', myP.isHu ? `${pyT('已胡')}${myP.huRecords.length}` : '');
             this.renderHand(myP, state, mySeat);
+            if (isQue) this.updateTingPanel(myP);
+            else {
+                const info = this.$('ting-info');
+                if (info) info.style.display = 'none';
+            }
             const autoMsg = this.$('auto-hu-msg');
             if (autoMsg) autoMsg.style.display = (myP.isHu && state.autoPlay) ? 'inline-block' : 'none';
         }
@@ -152,9 +200,9 @@ class UIController {
         });
     }
 
-    static renderLogs(logs) { const el = this.$('cmd-log'); if (el && logs) { el.innerHTML = logs.map(l => `<div>> ${l}</div>`).join(''); el.scrollTop = el.scrollHeight; } }
-    static log(text) { const el = this.$('cmd-log'); if (el) { const d = document.createElement('div'); d.innerText = `> ${text}`; el.appendChild(d); el.scrollTop = el.scrollHeight; } }
-    static clearLog(text = '系统就绪。') { const el = this.$('cmd-log'); if (el) el.innerHTML = `<div>> ${text}</div>`; }
+    static renderLogs(logs) { const el = this.$('cmd-log'); if (el && logs) { el.innerHTML = logs.map(l => `<div>> ${pyT(l)}</div>`).join(''); el.scrollTop = el.scrollHeight; } }
+    static log(text) { const el = this.$('cmd-log'); if (el) { const d = document.createElement('div'); d.innerText = `> ${pyT(text)}`; el.appendChild(d); el.scrollTop = el.scrollHeight; } }
+    static clearLog(text = '系统就绪。') { const el = this.$('cmd-log'); if (el) el.innerHTML = `<div>> ${pyT(text)}</div>`; }
 
     static updateTingPanel(player) {
         const info = this.$('ting-info'), list = this.$('ting-list');
@@ -167,17 +215,18 @@ class UIController {
     static showInstruction(title, desc, optionsHtml) {
         const box = this.$('phase-instruction');
         if (!box) return;
-        this.$('instruction-title').innerText = title;
-        this.$('instruction-desc').innerText = desc;
+        this.$('instruction-title').innerText = pyT(title);
+        this.$('instruction-desc').innerText = pyT(desc);
         this.$('instruction-options').innerHTML = optionsHtml;
         box.style.display = 'flex';
     }
     static hideInstruction = () => { const el = this.$('phase-instruction'); if (el) el.style.display = 'none'; };
 
     static showActionBox(showHu, showGang, showPung, onHu, onGang, onPung, onPass) {
-        [['btn-hu', showHu, onHu], ['btn-gang', showGang, onGang], ['btn-pung', showPung, onPung], ['btn-pass', true, onPass]].forEach(([id, show, h]) => {
+        const huTxt = pyT('胡') + ' (H)', gangTxt = pyT('杠') + ' (G)', pungTxt = pyT('碰') + ' (P)', passTxt = pyT('过') + ' (X)';
+        [['btn-hu', showHu, onHu, huTxt], ['btn-gang', showGang, onGang, gangTxt], ['btn-pung', showPung, onPung, pungTxt], ['btn-pass', true, onPass, passTxt]].forEach(([id, show, h, txt]) => {
             const btn = this.$(id);
-            if (btn) { btn.style.display = show ? 'inline-block' : 'none'; btn.onclick = h; }
+            if (btn) { btn.style.display = show ? 'inline-block' : 'none'; btn.onclick = h; btn.innerText = txt; }
         });
         const box = this.$('cmd-box');
         if (box) box.style.display = 'inline-flex';
@@ -190,17 +239,18 @@ class UIController {
         const sorted = [...players].sort((a, b) => b.score - a.score);
 
         const ranksHtml = sorted.map((p, idx) => {
-            const huList = (p.huRecords || []).map((r, i) =>
-                `<div class="result-hu-item">• ${r.score}分 (${r.fan}番: ${r.fanName || '平胡'}${r.isZiMo ? ' 自摸' : ''})</div>`
-            ).join('');
+            const huList = (p.huRecords || []).map((r, i) => {
+                const yakuStr = (r.fanName || '平胡').replace(/\s*自摸\b/, '').trim();
+                return `<div class="result-hu-item">• ${r.score}${pyT('分')} (${r.fan}${pyT('番')}: ${r.isZiMo ? `${pyT('自摸')} ` : ''}${pyT(yakuStr)})</div>`;
+            }).join('');
 
             return `
                 <div class="result-rank-row">
                     <div class="result-rank-header">
-                        <span>${idx + 1}位 ${p.name}</span>
-                        <span><b>${p.score}分</b> (胡${p.huRecords?.length || 0}次)</span>
+                        <span>${idx + 1}${pyT('位')} ${pyT(p.name)}</span>
+                        <span><b>${p.score}${pyT('分')}</b> (${pyT('已胡')}${p.huRecords?.length || 0}${pyT('次')})</span>
                     </div>
-                    ${huList ? `<div class="result-hu-list">${huList}</div>` : `<div class="result-no-hu">本局未胡牌</div>`}
+                    ${huList ? `<div class="result-hu-list">${huList}</div>` : `<div class="result-no-hu">${pyT('本局未胡牌')}</div>`}
                 </div>
             `;
         }).join('');
@@ -209,7 +259,7 @@ class UIController {
 
         const pen = this.$('result-penalties');
         if (pen) {
-            pen.innerHTML = penaltyLogs.length ? `<b class="penalties-title">清算明细:</b>` + penaltyLogs.map(l => `<div class="penalty-item">${l}</div>`).join('') : '';
+            pen.innerHTML = penaltyLogs.length ? `<b class="penalties-title">${pyT('清算明细')}:</b>` + penaltyLogs.map(l => `<div class="penalty-item">${pyT(l)}</div>`).join('') : '';
             pen.style.display = penaltyLogs.length ? 'block' : 'none';
         }
 
@@ -217,7 +267,9 @@ class UIController {
         const ctrl = (typeof window !== 'undefined') ? window.gameController : null;
         const isHost = Boolean(ctrl?.p2p?.isHost);
         if (btn) {
-            btn.innerText = ctrl?.isOnline ? (isHost ? '再来一局 (房主开始)' : '等待房主再来一局') : '再来一局';
+            const restartZh = ctrl?.isOnline ? (isHost ? '再来一局 (房主开始)' : '等待房主再来一局') : '再来一局';
+            const restartPy = ctrl?.isOnline ? (isHost ? 'Zàilái Yìjú (Fángzhǔ kāishǐ)' : 'Děngdài fángzhǔ zàilái yìjú') : 'Zàilái Yìjú';
+            btn.innerText = _PinyinHelper?.isPinyin ? restartPy : restartZh;
             btn.disabled = Boolean(ctrl?.isOnline && !isHost);
             btn.onclick = () => (ctrl?.isOnline ? ctrl.startOnlineMatch() : ctrl?.initGame(false));
         }
@@ -226,10 +278,10 @@ class UIController {
     static hideResultModal = () => { const el = this.$('result-modal'); if (el) el.style.display = 'none'; };
 }
 
-// --- 3. ゲーム進行コントローラー (GameController) ---
+// --- 4. ゲーム進行コントローラー (GameController) ---
 class GameController {
     constructor(state, sound, ui, engine, ai, p2p, flow, dslPrng = null) {
-        Object.assign(this, { state, sound, ui, engine, ai, p2p, flow, dslPrng, isOnline: false, isDiscarding: false, pendingOffTurn: null });
+        Object.assign(this, { state, sound, ui, engine, ai, p2p, flow, dslPrng, isOnline: false, isDiscarding: false, pendingOffTurn: null, pinyinMode: false });
         this.initP2PEvents();
     }
 
@@ -242,6 +294,14 @@ class GameController {
     }
     setMyName(name) {
         try { localStorage.setItem('hz_username', name); } catch (e) {}
+    }
+
+    togglePinyin() {
+        this.pinyinMode = !this.pinyinMode;
+        try { localStorage.setItem('hz_pinyin_mode', this.pinyinMode); } catch (e) {}
+        this.ui.applyPinyinMode(this.pinyinMode);
+        this.updateRoomMembersDisplay();
+        this.ui.render(this.state, this.mySeat);
     }
 
     isHumanPlayer = idx => this.p2p?.playersInfo?.[idx] ? !this.p2p.playersInfo[idx].isAI : idx === 0;
@@ -261,9 +321,10 @@ class GameController {
     updateRoomMembersDisplay() {
         const el = UIController.$('room-members-display');
         if (el) {
-            el.innerHTML = [0, 1, 2, 3].map(i =>
-                `<span class="member-badge ${this.isHumanPlayer(i) ? 'human' : 'cpu'}" onclick="${i === this.mySeat ? 'gameController.handleChangeName()' : ''}" title="${i === this.mySeat ? '点击修改昵称' : ''}">${this.getMemberBadgeName(i)}</span>`
-            ).join(' ');
+            el.innerHTML = [0, 1, 2, 3].map(i => {
+                const name = pyT(this.getMemberBadgeName(i));
+                return `<span class="member-badge ${this.isHumanPlayer(i) ? 'human' : 'cpu'}" onclick="${i === this.mySeat ? 'gameController.handleChangeName()' : ''}" title="${i === this.mySeat ? (this.pinyinMode ? 'Dīanjī xiūgǎi nǐchēng' : '点击修改昵称') : ''}">${name}</span>`;
+            }).join(' ');
         }
     }
 
@@ -296,7 +357,7 @@ class GameController {
 
         const start = prng ? prng.nextInt(0, CONFIG.TOTAL_PLAYERS - 1) : Math.floor(Math.random() * CONFIG.TOTAL_PLAYERS);
         this.state.startPlayer = this.state.currentTurn = start;
-        this.clearLog(`新局开始，${this.state.players[start].name} 起家。`);
+        this.clearLog(`新局开始，${this.state.players[start].name} 起家`);
 
         const deck = this.engine.shuffle(this.engine.createDeck(), prng);
         for (let r = 0; r < CONFIG.HAND_SIZE; r++) {
@@ -322,12 +383,12 @@ class GameController {
         const code = String(Math.floor(1000 + Math.random() * 9000));
         this.handleCreateRoom(code);
         this.initGame(false);
-        this.log(`已重置所有连接并创建新房间: ${code} (房主)`);
+        this.log(`新房间: ${code}`);
     }
 
     handleChangeName() {
         const current = this.getMyName() || (this.mySeat === 0 ? '1P' : `${this.mySeat + 1}P`);
-        const input = prompt('请输入你的玩家昵称 (最多8字):', current);
+        const input = prompt(this.pinyinMode ? 'Qǐng shūrù wánjiā nǐchēng (Zuìduō 8 zì):' : '请输入你的玩家昵称 (最多8字):', current);
         if (input == null) return;
         const rawName = input.trim().slice(0, 8) || (this.mySeat === 0 ? '1P' : `${this.mySeat + 1}P`);
         this.setMyName(rawName);
@@ -348,10 +409,10 @@ class GameController {
                 this.p2p.broadcastRoomInfo();
                 this.syncStateToPeers();
             }
-            this.log(`房主昵称已修改为: ${rawName}`);
+            this.log(`改名: ${rawName}`);
         } else {
             this.p2p?.sendAction('SET_NAME', { name: formattedName });
-            this.log(`昵称已修改为: ${rawName}`);
+            this.log(`改名: ${rawName}`);
         }
 
         this.updateRoomMembersDisplay();
@@ -373,14 +434,14 @@ class GameController {
         const code = String(Math.floor(1000 + Math.random() * 9000));
         await this.handleCreateRoom(code);
         this.initGame(false);
-        this.log(`已切换至新房间: ${code} (房主)`);
+        this.log(`换房: ${code}`);
     }
 
     async handleJoinRoom(inputCode = null, savedSeat = null) {
-        const code = inputCode || prompt('请输入4位房间号:');
+        const code = inputCode || prompt(this.pinyinMode ? 'Qǐng shūrù 4 wèi fángjiānhào:' : '请输入4位房间号:');
         if (!code) return;
         try {
-            this.log(`正在连接房间 ${code.trim()}...`);
+            this.log(`连接房间 ${code.trim()}...`);
             const myName = this.getMyName() || null;
             await this.p2p.joinRoom(code.trim(), savedSeat, myName);
             this.isOnline = true;
@@ -390,21 +451,21 @@ class GameController {
             this.showRoomBar(this.p2p.roomCode, '玩家');
             this.updateRoomMembersDisplay();
             sessionStorage.setItem('hz_session', JSON.stringify({ role: 'client', roomCode: this.p2p.roomCode, seatIndex: this.p2p.seatIndex }));
-            this.log(`已加入房间 ${code.trim()}，等待房主开始对局...`);
-        } catch (err) { alert('加入房间失败: ' + (err.message || err)); }
+            this.log(`已加入 ${code.trim()}，等待开局...`);
+        } catch (err) { alert((this.pinyinMode ? 'Jiārù fángjiān shībài: ' : '加入房间失败: ') + (err.message || err)); }
     }
 
     showRoomBar(code, role) {
         const set = (id, prop, val) => { const el = UIController.$(id); if (el) el[prop] = val; };
         set('room-bar', 'style', 'display: flex;');
         set('room-code-display', 'innerText', code);
-        set('room-role-display', 'innerText', `(${role})`);
+        set('room-role-display', 'innerText', `(${pyT(role)})`);
         const startBtn = UIController.$('btn-start');
         if (startBtn) startBtn.style.display = role === '玩家' ? 'none' : 'inline-block';
     }
 
     handleStartGame() {
-        if (this.isOnline && !this.p2p?.isHost) return this.log('当前为玩家身份，请等待房主点击开始对局。');
+        if (this.isOnline && !this.p2p?.isHost) return this.log('请等待房主开局');
         this.initGame(true);
         this.syncStateToPeers();
     }
@@ -416,7 +477,8 @@ class GameController {
         this.state.selectedSwapIndices = [];
         this.state.players.forEach((p, i) => { p.swapTiles = this.isHumanPlayer(i) ? [] : this.ai.getSwapTiles(p.hand); });
         this.ui.render(this.state, this.mySeat);
-        this.ui.showInstruction('换三张', '选3张牌', `<button id="btn-confirm-swap" disabled onclick="gameController.confirmUserSwap()">确定 (0/3)</button>`);
+        const confirmTxt = pyT('确定');
+        this.ui.showInstruction('换三张', '选3张牌', `<button id="btn-confirm-swap" disabled onclick="gameController.confirmUserSwap()">${confirmTxt} (0/3)</button>`);
         this.syncStateToPeers();
     }
 
@@ -432,7 +494,11 @@ class GameController {
 
         this.ui.render(this.state, this.mySeat);
         const btn = UIController.$('btn-confirm-swap');
-        if (btn) { const c = this.state.selectedSwapIndices.length; btn.disabled = (c !== 3); btn.innerText = `确定 (${c}/3)`; }
+        if (btn) {
+            const c = this.state.selectedSwapIndices.length;
+            btn.disabled = (c !== 3);
+            btn.innerText = `${pyT('确定')} (${c}/3)`;
+        }
     }
 
     confirmUserSwap() {
@@ -441,14 +507,14 @@ class GameController {
         const u = this.state.players[this.mySeat];
         u.swapTiles = this.state.selectedSwapIndices.map(i => u.hand[i]);
         this.ui.hideInstruction();
-        this.log('已提交换牌，等待其他玩家...');
+        this.log('已选换牌，等待中...');
         if (this.p2p && !this.p2p.isHost) return this.p2p.sendAction('CONFIRM_SWAP', { swapTiles: u.swapTiles, swapTileIds: u.swapTiles.map(t => t.id) });
         this.checkAndExecuteSwap();
     }
 
     checkAndExecuteSwap() {
         this.flow.executeSwap(this.state, () => {
-            this.log('换三张完成。');
+            this.log('换三张完成');
             this.startDingQuePhase();
         });
     }
@@ -457,10 +523,11 @@ class GameController {
         this.state.phase = CONFIG.PHASES.DINGQUE;
         this.state.players.forEach((p, i) => { p.que = this.isHumanPlayer(i) ? null : this.ai.getDingQue(p.hand); });
         this.ui.render(this.state, this.mySeat);
+        const [wTxt, tTxt, bTxt] = [pyT('缺万'), pyT('缺筒'), pyT('缺条')];
         this.ui.showInstruction('定缺', '请选择定缺门类', `
-            <button onclick="gameController.selectUserQue('W')">缺万</button>
-            <button onclick="gameController.selectUserQue('T')">缺筒</button>
-            <button onclick="gameController.selectUserQue('B')">缺条</button>`);
+            <button onclick="gameController.selectUserQue('W')">${wTxt}</button>
+            <button onclick="gameController.selectUserQue('T')">${tTxt}</button>
+            <button onclick="gameController.selectUserQue('B')">${bTxt}</button>`);
         this.syncStateToPeers();
     }
 
@@ -469,7 +536,7 @@ class GameController {
         if (this.state.players[this.mySeat]) this.state.players[this.mySeat].que = suit;
         this.ui.hideInstruction();
         this.ui.render(this.state, this.mySeat);
-        this.log(`已选择缺${CONFIG.SUITS[suit]}，等待其他玩家...`);
+        this.log(`已定${pyT('缺' + CONFIG.SUITS[suit])}，等待中...`);
         if (this.p2p && !this.p2p.isHost) return this.p2p.sendAction('SELECT_QUE', { que: suit });
         this.checkAndExecuteDingQue();
     }
@@ -478,7 +545,7 @@ class GameController {
         if (!this.flow.checkDingQueComplete(this.state)) return this.syncStateToPeers();
         this.state.sortAllHands();
         this.state.phase = CONFIG.PHASES.PLAYING;
-        this.log(`定缺完毕: ${this.state.players.map(p => `${p.name}缺${CONFIG.SUITS[p.que]}`).join('，')}`);
+        this.log(`定缺: ${this.state.players.map(p => `${p.name} 缺${CONFIG.SUITS[p.que]}`).join(', ')}`);
         this.ui.render(this.state, this.mySeat);
         this.syncStateToPeers();
         this.processTurn();
@@ -495,7 +562,7 @@ class GameController {
             const drawn = this.state.wall.pop();
             this.state.wallCount = this.state.wall.length;
             p.hand.push(drawn);
-            this.log(`${p.name} 摸 ${isRinshan ? '[杠上牌] ' : ''}${this.engine.tileToString(drawn)}`);
+            this.log(`${p.name} 摸 ${isRinshan ? '[杠] ' : ''}${this.engine.tileToString(drawn)}`);
             this.ui.render(this.state, this.mySeat);
         } else if (!isRinshan) {
             this.state.lastActionIsGang = false;
@@ -547,8 +614,8 @@ class GameController {
         const tile = p.hand[index];
         if (!tile) return;
 
-        if (p.hand.some(t => t.suit === p.que) && tile.suit !== p.que) return this.log(`必须先打出缺门牌（缺${CONFIG.SUITS[p.que]}）`);
-        if (p.isHu && index !== p.hand.length - 1) return this.log('胡牌后只能打出摸到的最后一张牌。');
+        if (p.hand.some(t => t.suit === p.que) && tile.suit !== p.que) return this.log(`先打缺门牌(缺${CONFIG.SUITS[p.que]})`);
+        if (p.isHu && index !== p.hand.length - 1) return this.log('已胡牌只能打摸牌');
 
         this.ui.hideActionBox();
         if (this.p2p && !this.p2p.isHost) return this.p2p.sendAction('DISCARD', { handIndex: index, tileId: tile.id, tileCode: tile.code });
@@ -661,7 +728,9 @@ class GameController {
                         if (this.pendingOffTurn?.idx === idx) {
                             const info = this.pendingOffTurn;
                             this.pendingOffTurn = null;
-                            this.arbitratePungGang(info.tile, info.discarder, info.offset);
+                            if (payload.choice === 'GANG') this._executeMeld(playerIndex, 'GANG', info.tile, info.discarder, 3, CONFIG.GANG_SCORE, true);
+                            else if (payload.choice === 'PUNG') this._executeMeld(playerIndex, 'PUNG', info.tile, info.discarder, 2, 0, false);
+                            else this.arbitratePungGang(info.tile, info.discarder, info.offset);
                         }
                     }, 5000);
                     return;
@@ -731,7 +800,8 @@ class GameController {
         const fanInfo = this.engine.calculateFan(p, tile, isZiMo, fromPlayer, this.state);
         const score = CONFIG.BASE_SCORE * Math.pow(2, fanInfo.fan);
 
-        this.log(`★ ${p.name} ${isZiMo ? '自摸' : '点炮'}胡: ${fanInfo.name} ${fanInfo.fan}番 ${score}分 ${this.engine.tileToString(tile)}`);
+        const yakuNames = (fanInfo.name || '平胡').replace(/\s*自摸\b/, '').trim();
+        this.log(`★ ${p.name} ${isZiMo ? '自摸' : '点炮'}: ${yakuNames ? yakuNames + ' ' : ''}(${fanInfo.fan}番 ${score}分) ${this.engine.tileToString(tile)}`);
         p.huRecords.push({ fan: fanInfo.fan, fanName: fanInfo.name, score, isZiMo, tile });
         this.state.lastActionIsGang = false;
         this.state.lastGangPlayer = null;
@@ -774,6 +844,7 @@ class GameController {
     endGame() {
         this.state.phase = CONFIG.PHASES.END;
         const logs = this.flow.calculateEndSettlement(this.state, this.engine);
+        this.state.settlementLogs = logs;
         logs.forEach(l => this.log(l));
         this.ui.render(this.state, this.mySeat);
         this.ui.showResultModal(this.state.players, logs);
@@ -831,13 +902,14 @@ class GameController {
                 this.state.selectedSwapIndices = savedIndices;
                 const myP = this.state.players[this.mySeat], c = this.state.selectedSwapIndices.length;
                 if (!myP?.swapTiles || myP.swapTiles.length !== 3) {
-                    this.ui.showInstruction('换三张', '选3张牌', `<button id="btn-confirm-swap" ${c === 3 ? '' : 'disabled'} onclick="gameController.confirmUserSwap()">确定 (${c}/3)</button>`);
+                    this.ui.showInstruction('换三张', '选3张牌', `<button id="btn-confirm-swap" ${c === 3 ? '' : 'disabled'} onclick="gameController.confirmUserSwap()">${pyT('确定')} (${c}/3)</button>`);
                 } else this.ui.hideInstruction();
             },
             [CONFIG.PHASES.DINGQUE]: () => {
                 this.state.selectedSwapIndices = [];
                 if (!this.state.players[this.mySeat]?.que) {
-                    this.ui.showInstruction('定缺', '请选择定缺门类', `<button onclick="gameController.selectUserQue('W')">缺万</button><button onclick="gameController.selectUserQue('T')">缺筒</button><button onclick="gameController.selectUserQue('B')">缺条</button>`);
+                    const [wTxt, tTxt, bTxt] = [pyT('缺万'), pyT('缺筒'), pyT('缺条')];
+                    this.ui.showInstruction('定缺', '请选择定缺门类', `<button onclick="gameController.selectUserQue('W')">${wTxt}</button><button onclick="gameController.selectUserQue('T')">${tTxt}</button><button onclick="gameController.selectUserQue('B')">${bTxt}</button>`);
                 } else this.ui.hideInstruction();
             },
             [CONFIG.PHASES.PLAYING]: () => {
@@ -847,7 +919,10 @@ class GameController {
                     if (this.state.autoPlay) setTimeout(() => this.autoPlayPlayerTurn(this.mySeat), CONFIG.DELAYS.AI_TURN);
                 }
             },
-            [CONFIG.PHASES.END]: () => this.ui.showResultModal(this.state.players, [])
+            [CONFIG.PHASES.END]: () => {
+                const logs = this.state.settlementLogs || this.flow.calculateEndSettlement(this.state, this.engine);
+                this.ui.showResultModal(this.state.players, logs);
+            }
         };
         H[this.state.phase]?.();
         this.ui.render(this.state, this.mySeat);
@@ -877,18 +952,18 @@ class GameController {
                     this.syncStateToPeers();
                     this.updateRoomMembersDisplay();
                     this.ui.render(this.state, this.mySeat);
-                    this.log(`${playerIndex + 1}P 更名为: ${newName}`);
+                    this.log(`${playerIndex + 1}P 改名: ${newName}`);
                 }
             },
             CONFIRM_SWAP: () => {
                 p.swapTiles = payload.swapTileIds ? payload.swapTileIds.map(id => p.hand.find(x => x.id === id)).filter(Boolean) : (payload.swapTiles || []).map(t => p.hand.find(x => x.suit === t.suit && x.num === t.num)).filter(Boolean);
                 if (p.swapTiles?.length !== 3) p.swapTiles = p.hand.filter(t => t.suit !== 'HZ').slice(0, 3);
-                this.log(`${p.name} 已选择换牌。`);
+                this.log(`${p.name} 已选换牌`);
                 this.checkAndExecuteSwap();
             },
             SELECT_QUE: () => {
                 p.que = payload.que;
-                this.log(`${p.name} 已选择缺${CONFIG.SUITS[payload.que]}`);
+                this.log(`${p.name} 定缺${CONFIG.SUITS[payload.que]}`);
                 this.ui.render(this.state, this.mySeat);
                 this.checkAndExecuteDingQue();
             },
@@ -930,11 +1005,19 @@ if (_state) {
 
 if (typeof window !== 'undefined') {
     window.addEventListener('DOMContentLoaded', () => {
+        let savedPinyin = false;
+        try { savedPinyin = localStorage.getItem('hz_pinyin_mode') === 'true'; } catch (e) {}
+        if (gameController) {
+            gameController.pinyinMode = savedPinyin;
+            UIController.applyPinyinMode(savedPinyin);
+        }
+
         const btnAuto = UIController.$('btn-auto');
         if (btnAuto && _state) {
             btnAuto.onclick = () => {
                 _state.autoPlay = !_state.autoPlay;
-                btnAuto.innerText = `托管: ${_state.autoPlay ? '开' : '关'}`;
+                const isPy = gameController?.pinyinMode;
+                btnAuto.innerText = isPy ? `Tuōguǎn: ${_state.autoPlay ? 'Kāi' : 'Guān'}` : `托管: ${_state.autoPlay ? '开' : '关'}`;
                 btnAuto.classList.toggle('active', _state.autoPlay);
                 if (_state.autoPlay && _state.phase === CONFIG.PHASES.PLAYING && _state.currentTurn === gameController.mySeat) {
                     gameController.autoPlayPlayerTurn(gameController.mySeat);

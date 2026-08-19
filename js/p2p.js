@@ -111,7 +111,7 @@ class P2PManager {
                         }
                         conn.send({ type: 'JOIN_RES', success: true, seatIndex: seat.id, playersInfo: this.playersInfo });
                         this.broadcastRoomInfo();
-                        const joinMsg = `玩家 ${displayName} (${seat.id + 1}P) 已成功连接进入房间。`;
+                        const joinMsg = `${seat.id + 1}P 进入房间`;
                         if (window.gameController) window.gameController.log(joinMsg);
                         else window.UIController?.log(joinMsg);
                         if (window.gameController?.state) this.broadcastState(window.gameController.state);
@@ -133,7 +133,7 @@ class P2PManager {
                     Object.assign(p, { isAI: true, peerId: null, name: `${p.id + 1}P` });
                     if (window.gameController?.state?.players?.[p.id]) window.gameController.state.players[p.id].name = `${p.id + 1}P (电脑)`;
                     this.broadcastRoomInfo();
-                    const leaveMsg = `玩家 ${oldName} (${p.id + 1}P) 已断开连接，转为电脑托管。`;
+                    const leaveMsg = `${p.id + 1}P 离线 (电脑托管)`;
                     if (window.gameController) window.gameController.log(leaveMsg);
                     else window.UIController?.log(leaveMsg);
                     if (window.gameController?.state) this.broadcastState(window.gameController.state);
@@ -149,8 +149,7 @@ class P2PManager {
                     this.seatIndex = data.seatIndex;
                     this.playersInfo = data.playersInfo;
                     this.onRoomUpdate?.(this.playersInfo, this.seatIndex);
-                    const myName = this.playersInfo[this.seatIndex]?.name || `${this.seatIndex + 1}P`;
-                    const successMsg = `已成功连接并加入房间 (你是 ${this.seatIndex + 1}P: ${myName})，等待房主开始对局...`;
+                    const successMsg = `已加入房间 (你是 ${this.seatIndex + 1}P)，等待开局...`;
                     if (window.gameController) window.gameController.log(successMsg);
                     else window.UIController?.log(successMsg);
                     this._joinResolve?.();
@@ -182,6 +181,7 @@ class P2PManager {
                 wallCount: state.remainingWall, lastDiscard: state.lastDiscard,
                 lastActionIsGang: state.lastActionIsGang, lastGangPlayer: state.lastGangPlayer,
                 logs: state.logs || [],
+                settlementLogs: state.settlementLogs || [],
                 players: state.players.map(p => ({
                     id: p.id, name: p.name, score: p.score, que: p.que, isHu: p.isHu,
                     huRecords: p.huRecords, melds: p.melds, discards: p.discards, handCount: p.hand?.length || 0, hand: p.hand

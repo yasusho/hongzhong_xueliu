@@ -8,6 +8,7 @@ const { CONFIG, MahjongEngine, MahjongAI, GameFlow, GameState } = require('../js
 const { SoundManager, UIController, GameController } = require('../js/main.js');
 const { P2PManager } = require('../js/p2p.js');
 const { DeterministicPRNG, DeterministicVM, TriggerResolutionEngine } = require('../js/dsl.js');
+const { PinyinHelper, PINYIN_DICT } = require('../js/pinyin.js');
 
 console.log('--- 1. モジュール読み込みテスト ---');
 assert(CONFIG && CONFIG.TOTAL_PLAYERS === 4, 'CONFIG loaded correctly');
@@ -17,6 +18,7 @@ assert(DeterministicVM, 'DeterministicVM loaded');
 assert(SoundManager, 'SoundManager loaded');
 assert(P2PManager, 'P2PManager loaded');
 assert(GameFlow, 'GameFlow loaded');
+assert(PinyinHelper && PINYIN_DICT, 'PinyinHelper and PINYIN_DICT loaded');
 console.log('✓ 全モジュールの読み込みに成功');
 
 console.log('\n--- 2. 麻雀エンジン（牌生成・ソート・文字列表現）テスト ---');

@@ -162,14 +162,31 @@ class MahjongEngine {
     }
 
     static getTingTiles(p) {
-        if (!p?.hand || p.hand.some(t => t.suit === p.que)) return [];
-        const baseHand = p.hand.length % 3 === 2 ? p.hand.slice(0, -1) : [...p.hand];
-        if (baseHand.length % 3 !== 1) return [];
-
-        const testP = { ...p, hand: baseHand };
+        if (!p?.hand || p.hand.length === 0 || p.hand.some(t => t.suit === p.que)) return [];
         const cands = ['W', 'T', 'B'].filter(s => s !== p.que).flatMap(s => Array.from({ length: 9 }, (_, i) => ({ suit: s, num: i + 1, code: `${i + 1}${s}` })));
         cands.push({ suit: 'HZ', num: 0, code: 'HZ' });
-        return cands.filter(t => this.checkCanHu(testP, t));
+
+        if (p.hand.length % 3 === 1) {
+            return cands.filter(t => this.checkCanHu(p, t));
+        }
+
+        if (p.hand.length % 3 === 2) {
+            const baseHand = p.hand.slice(0, -1);
+            const tingLast = cands.filter(t => this.checkCanHu({ ...p, hand: baseHand }, t));
+            if (tingLast.length > 0) return tingLast;
+
+            const allTings = new Map();
+            for (let i = 0; i < p.hand.length; i++) {
+                const cutTile = p.hand[i];
+                if (p.hand.some(t => t.suit === p.que) && cutTile.suit !== p.que) continue;
+                const testHand = p.hand.filter((_, idx) => idx !== i);
+                const tings = cands.filter(t => this.checkCanHu({ ...p, hand: testHand }, t));
+                tings.forEach(t => allTings.set(t.code, t));
+            }
+            return Array.from(allTings.values());
+        }
+
+        return [];
     }
 }
 
@@ -229,7 +246,7 @@ class GameFlow {
         const [hz, nonHz] = [state.players.filter(isHZ), state.players.filter(p => !isHZ(p))];
         hz.forEach(hp => nonHz.forEach(np => {
             state.transferScore(hp.id, np.id, CONFIG.HUA_ZHU_PENALTY);
-            logs.push(`查花猪: ${hp.name} 赔付 ${np.name} ${CONFIG.HUA_ZHU_PENALTY}分`);
+            logs.push(`查花猪: ${hp.name} → ${np.name} ${CONFIG.HUA_ZHU_PENALTY}分`);
         }));
 
         const ev = state.players.filter(p => !p.isHu && !isHZ(p)).map(p => ({ p, ting: engine.getTingTiles(p) }));
@@ -238,7 +255,7 @@ class GameFlow {
             const maxFan = Math.max(...tList.map(t => engine.calculateFan(tp, t, false).fan), 0);
             const penalty = CONFIG.BASE_SCORE * Math.pow(2, maxFan);
             state.transferScore(np.id, tp.id, penalty);
-            logs.push(`查大叫: ${np.name} 赔付 ${tp.name} ${penalty}分 (${maxFan}番)`);
+            logs.push(`查大叫: ${np.name} → ${tp.name} ${penalty}分 (${maxFan}番)`);
         }));
         return logs;
     }
