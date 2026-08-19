@@ -81,13 +81,32 @@ class P2PManager {
     async createRoom() {
         this.reset();
         const code4 = String(Math.floor(1000 + Math.random() * 9000));
-        const peerId = 'hz' + code4;
-        const actualId = await this.initPeer(peerId);
+        this.roomCode = code4;
         this.isHost = true;
-        this.roomCode = actualId.startsWith('hz') ? actualId.substring(2) : actualId;
         this.seatIndex = 0;
-        this.playersInfo[0] = { id: 0, name: '1P (房主)', isAI: false, peerId: actualId };
-        return this.roomCode;
+        this.playersInfo[0] = { id: 0, name: '1P (房主)', isAI: false, peerId: 'hz' + code4 };
+
+        // 待ち時間ゼロで即座にUIへ反映
+        if (typeof document !== 'undefined') {
+            const codeEl = document.getElementById('room-code-display');
+            if (codeEl) codeEl.innerText = code4;
+            const roleEl = document.getElementById('room-role-display');
+            if (roleEl) roleEl.innerText = '(房主)';
+        }
+
+        try {
+            const actualId = await this.initPeer('hz' + code4);
+            const actualCode = actualId.startsWith('hz') ? actualId.substring(2) : actualId;
+            this.roomCode = actualCode;
+            if (typeof document !== 'undefined') {
+                const codeEl = document.getElementById('room-code-display');
+                if (codeEl) codeEl.innerText = actualCode;
+            }
+            return actualCode;
+        } catch (err) {
+            console.warn('P2P connection warning:', err);
+            return code4;
+        }
     }
 
     async joinRoom(targetRoomCode) {
