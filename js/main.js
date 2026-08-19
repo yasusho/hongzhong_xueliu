@@ -95,7 +95,6 @@ class GameController {
         try {
             const actualCode = await this.p2p.createRoom(code);
             this.showRoomBar(actualCode, '房主');
-            window.location.hash = actualCode;
         } catch (err) {
             console.error('初始化房间失败:', err);
         }
@@ -110,7 +109,6 @@ class GameController {
             await this.p2p.joinRoom(code.trim());
             this.isOnline = true;
             this.showRoomBar(this.p2p.roomCode, '玩家');
-            window.location.hash = this.p2p.roomCode;
             this.ui.log(`已加入房间 ${code}，等待房主开始对局...`);
         } catch (err) {
             alert('加入房间失败: ' + (err.message || err));
@@ -982,13 +980,9 @@ if (typeof window !== 'undefined') {
             }
         });
 
-        // URLハッシュから自動参加
-        if (window.location.hash && window.location.hash.length > 1) {
-            const roomCode = window.location.hash.substring(1).trim();
-            if (roomCode) {
-                gameController.handleJoinRoom(roomCode);
-                return;
-            }
+        // URLの古いハッシュをクリア
+        if (window.location.hash) {
+            try { history.replaceState(null, '', window.location.pathname); } catch (e) {}
         }
 
         // 初期状態で4桁の部屋コードを生成・常時表示
