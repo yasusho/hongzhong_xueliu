@@ -243,10 +243,11 @@ class GameController {
         userPlayer.swapTiles = this.state.selectedSwapIndices.map(i => userPlayer.hand[i]);
         const swapTileIds = userPlayer.swapTiles.map(t => t.id);
 
+        this.ui.hideInstruction();
+        this.log('已提交换牌，等待其他玩家...');
+
         if (this.isOnline && !this.p2p.isHost) {
             this.p2p.sendAction('CONFIRM_SWAP', { swapTiles: userPlayer.swapTiles, swapTileIds: swapTileIds });
-            this.ui.hideInstruction();
-            this.log('已提交换牌，等待其他玩家...');
             return;
         }
 
@@ -373,7 +374,7 @@ class GameController {
             this.ui.updateTingPanel(p);
             this.checkPlayerTurnActions();
 
-            if (this.state.autoPlay) {
+            if (this.state.autoPlay || (p && p.isHu)) {
                 setTimeout(() => this.autoPlayUserTurn(), CONFIG.DELAYS.AI_TURN);
             }
         } else if (!this.isHumanPlayer(this.state.currentTurn)) {
@@ -533,11 +534,26 @@ class GameController {
                 }
             } else {
                 // 遠隔人間プレイヤーに問い合わせ
-                pendingCount++;
-                this.p2p.sendToSeat(pIdx, {
+                const sent = this.p2p.sendToSeat(pIdx, {
                     type: 'PROMPT_OFFTURN_ACTION',
                     options: { canHu: true, canGang: false, canPung: false, tile: discardTile, fromPlayer: discarderIndex }
                 });
+                if (sent) {
+                    pendingCount++;
+                    setTimeout(() => {
+                        if (this.pendingOffTurnHu && this.pendingOffTurnHu.decisions[pIdx] === undefined) {
+                            this.pendingOffTurnHu.decisions[pIdx] = 'PASS';
+                            this.resolveHuDecisions(
+                                this.pendingOffTurnHu.huCandidates,
+                                this.pendingOffTurnHu.decisions,
+                                this.pendingOffTurnHu.discardTile,
+                                this.pendingOffTurnHu.discarderIndex
+                            );
+                        }
+                    }, 8000);
+                } else {
+                    decisions[pIdx] = 'PASS';
+                }
             }
         });
 
@@ -597,6 +613,16 @@ class GameController {
                     return;
                 }
             } else if (targetIdx === this.mySeat) {
+                if (this.state.autoPlay) {
+                    if (canGang && this.ai.shouldGang(targetP, discardTile)) {
+                        this.doGangFromDiscard(this.mySeat, discardTile, discarderIndex);
+                    } else if (canPung && this.ai.shouldPung(targetP, discardTile)) {
+                        this.doPung(this.mySeat, discardTile, discarderIndex);
+                    } else {
+                        this.arbitratePungGangActions(discardTile, discarderIndex, i + 1);
+                    }
+                    return;
+                }
                 this.ui.showActionBox(
                     false, canGang, canPung,
                     null,
@@ -610,12 +636,21 @@ class GameController {
                 return;
             } else {
                 // 遠隔人間プレイヤーに問い合わせ
-                this.pendingOffTurnPungGang = { targetIdx, discardTile, discarderIndex, nextOffset: i + 1 };
-                this.p2p.sendToSeat(targetIdx, {
+                const sent = this.p2p.sendToSeat(targetIdx, {
                     type: 'PROMPT_OFFTURN_ACTION',
                     options: { canHu: false, canGang, canPung, tile: discardTile, fromPlayer: discarderIndex }
                 });
-                return;
+                if (sent) {
+                    this.pendingOffTurnPungGang = { targetIdx, discardTile, discarderIndex, nextOffset: i + 1 };
+                    setTimeout(() => {
+                        if (this.pendingOffTurnPungGang && this.pendingOffTurnPungGang.targetIdx === targetIdx) {
+                            const info = this.pendingOffTurnPungGang;
+                            this.pendingOffTurnPungGang = null;
+                            this.arbitratePungGangActions(info.discardTile, info.discarderIndex, info.nextOffset);
+                        }
+                    }, 8000);
+                    return;
+                }
             }
         }
 
@@ -889,8 +924,9 @@ class GameController {
         } else if (this.state.phase === CONFIG.PHASES.PLAYING) {
             this.ui.hideInstruction();
             if (this.state.currentTurn === this.mySeat) {
+                const myP = this.state.players[this.mySeat];
                 this.checkPlayerTurnActions();
-                if (this.state.autoPlay) {
+                if (this.state.autoPlay || (myP && myP.isHu)) {
                     setTimeout(() => this.autoPlayUserTurn(), CONFIG.DELAYS.AI_TURN);
                 }
             }
@@ -933,8 +969,14 @@ class GameController {
                 const p = this.state.players[playerIndex];
                 if (payload.swapTileIds && Array.isArray(payload.swapTileIds)) {
                     p.swapTiles = payload.swapTileIds.map(id => p.hand.find(x => x.id === id)).filter(Boolean);
-                } else if (payload.swapTiles) {
-                    p.swapTiles = payload.swapTiles;
+                }
+                if (!p.swapTiles || p.swapTiles.length !== 3) {
+                    if (payload.swapTiles && Array.isArray(payload.swapTiles)) {
+                        p.swapTiles = payload.swapTiles.map(t => p.hand.find(x => x.suit === t.suit && x.num === t.num)).filter(Boolean);
+                    }
+                }
+                if (!p.swapTiles || p.swapTiles.length !== 3) {
+                    p.swapTiles = p.hand.filter(t => t.suit !== 'HZ').slice(0, 3);
                 }
                 this.checkAndExecuteSwap();
             }

@@ -264,14 +264,20 @@ class P2PManager {
     }
 
     sendToSeat(seatIndex, data) {
-        if (!this.isHost) return;
+        if (!this.isHost) return false;
         const targetPlayer = this.playersInfo[seatIndex];
-        if (!targetPlayer || targetPlayer.isAI || !targetPlayer.peerId) return;
+        if (!targetPlayer || targetPlayer.isAI || !targetPlayer.peerId) return false;
 
         const conn = this.connections[targetPlayer.peerId];
         if (conn && conn.open) {
-            conn.send(data);
+            try {
+                conn.send(data);
+                return true;
+            } catch(e) {
+                return false;
+            }
         }
+        return false;
     }
 
     broadcast(data) {
