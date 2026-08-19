@@ -72,10 +72,10 @@ class GameController {
                 }
             });
         } else {
-            this.state.players[0].name = '1P (你)';
-            this.state.players[1].name = '2P (CPU)';
-            this.state.players[2].name = '3P (CPU)';
-            this.state.players[3].name = '4P (CPU)';
+            this.state.players[0].name = '1P';
+            this.state.players[1].name = '2P';
+            this.state.players[2].name = '3P';
+            this.state.players[3].name = '4P';
         }
 
         const startPlayer = Math.floor(Math.random() * CONFIG.TOTAL_PLAYERS);
@@ -116,7 +116,7 @@ class GameController {
     }
 
     async handleJoinRoom(inputCode = null) {
-        const code = inputCode || prompt('请输入房间号 (如 hz1234 或 1234):');
+        const code = inputCode || prompt('请输入4位房间号:');
         if (!code) return;
 
         try {
@@ -949,7 +949,7 @@ if (typeof window !== 'undefined') {
 
         const btnAuto = document.getElementById('btn-auto');
         if (btnAuto) {
-            btnAuto.onclick = function() {
+            btnAuto.onclick = function () {
                 gameState.autoPlay = !gameState.autoPlay;
                 this.innerText = `托管: ${gameState.autoPlay ? '开' : '关'}`;
                 if (gameState.autoPlay && gameState.phase === CONFIG.PHASES.PLAYING) {

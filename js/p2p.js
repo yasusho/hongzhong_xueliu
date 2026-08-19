@@ -80,25 +80,24 @@ class P2PManager {
 
     async createRoom() {
         this.reset();
-        const roomCode = 'hz' + Math.floor(1000 + Math.random() * 9000);
-        const actualId = await this.initPeer(roomCode);
+        const code4 = String(Math.floor(1000 + Math.random() * 9000));
+        const peerId = 'hz' + code4;
+        const actualId = await this.initPeer(peerId);
         this.isHost = true;
-        this.roomCode = actualId;
+        this.roomCode = actualId.startsWith('hz') ? actualId.substring(2) : actualId;
         this.seatIndex = 0;
         this.playersInfo[0] = { id: 0, name: '1P (房主)', isAI: false, peerId: actualId };
-        return actualId;
+        return this.roomCode;
     }
 
     async joinRoom(targetRoomCode) {
         this.reset();
-        let targetId = targetRoomCode.trim();
-        if (!targetId.startsWith('hz') && /^\d+$/.test(targetId)) {
-            targetId = 'hz' + targetId;
-        }
+        let code = String(targetRoomCode).trim();
+        let targetId = code.startsWith('hz') ? code : ('hz' + code);
 
         await this.initPeer();
         this.isHost = false;
-        this.roomCode = targetId;
+        this.roomCode = code.startsWith('hz') ? code.substring(2) : code;
 
         return new Promise((resolve, reject) => {
             const conn = this.peer.connect(targetId, { reliable: true });
