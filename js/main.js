@@ -236,19 +236,27 @@ class UIController {
     static showResultModal(players, penaltyLogs = []) {
         const modal = this.$('result-modal');
         if (!modal) return;
+
+        const titleEl = this.$('lbl-result-title');
+        if (titleEl) titleEl.innerText = pyT('对局结算');
+
+        const resetBtn = this.$('btn-reset-room');
+        if (resetBtn) resetBtn.innerText = pyT('新建房间 (重置)');
+
         const sorted = [...players].sort((a, b) => b.score - a.score);
 
         const ranksHtml = sorted.map((p, idx) => {
             const huList = (p.huRecords || []).map((r, i) => {
-                const yakuStr = (r.fanName || '平胡').replace(/\s*自摸\b/, '').trim();
-                return `<div class="result-hu-item">• ${r.score}${pyT('分')} (${r.fan}${pyT('番')}: ${r.isZiMo ? `${pyT('自摸')} ` : ''}${pyT(yakuStr)})</div>`;
+                const yakuStr = (r.fanName || '').split('自摸').join('').trim() || '平胡';
+                const fanInfoStr = `${r.fan} ${pyT('番')}: ${r.isZiMo ? `${pyT('自摸')} ` : ''}${pyT(yakuStr)}`;
+                return `<div class="result-hu-item">• ${r.score} ${pyT('分')} (${fanInfoStr.trim()})</div>`;
             }).join('');
 
             return `
                 <div class="result-rank-row">
                     <div class="result-rank-header">
-                        <span>${idx + 1}${pyT('位')} ${pyT(p.name)}</span>
-                        <span><b>${p.score}${pyT('分')}</b> (${pyT('已胡')}${p.huRecords?.length || 0}${pyT('次')})</span>
+                        <span>${idx + 1} ${pyT('位')} ${pyT(p.name)}</span>
+                        <span><b>${p.score} ${pyT('分')}</b> (${pyT('已胡')} ${p.huRecords?.length || 0} ${pyT('次')})</span>
                     </div>
                     ${huList ? `<div class="result-hu-list">${huList}</div>` : `<div class="result-no-hu">${pyT('本局未胡牌')}</div>`}
                 </div>
