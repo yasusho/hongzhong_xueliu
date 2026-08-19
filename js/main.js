@@ -195,10 +195,10 @@ class UIController {
             ).join('');
 
             return `
-                <div class="result-rank-card">
+                <div class="result-rank-row">
                     <div class="result-rank-header">
                         <span>${idx + 1}位 ${p.name}</span>
-                        <span class="result-rank-score">${p.score}分 (胡${p.huRecords?.length || 0}次)</span>
+                        <span><b>${p.score}分</b> (胡${p.huRecords?.length || 0}次)</span>
                     </div>
                     ${huList ? `<div class="result-hu-list">${huList}</div>` : `<div class="result-no-hu">本局未胡牌</div>`}
                 </div>

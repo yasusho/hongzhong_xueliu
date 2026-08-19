@@ -12,7 +12,7 @@
     <header class="game-header">
         <h1 class="game-title">红中血流成河麻将</h1>
         <div class="header-actions">
-            <button id="btn-start" class="btn-primary" onclick="gameController.handleStartGame()">开始对局</button>
+            <button id="btn-start" onclick="gameController.handleStartGame()">开始对局</button>
             <button onclick="gameController.handleJoinRoom()">加入房间</button>
         </div>
     </header>
@@ -20,8 +20,8 @@
     <div id="room-bar" class="room-bar">
         <div class="room-info-left">
             <span>房间号: <b id="room-code-display"></b> <span id="room-role-display">(房主)</span></span>
-            <button class="btn-small" onclick="gameController.handleChangeRoom()" title="重新生成4位房间号">换号</button>
-            <button class="btn-small" onclick="gameController.handleChangeName()" title="修改你的显示昵称">改名</button>
+            <button onclick="gameController.handleChangeRoom()" title="重新生成4位房间号">换号</button>
+            <button onclick="gameController.handleChangeName()" title="修改你的显示昵称">改名</button>
         </div>
         <div id="room-members-display">
             <span class="member-badge human">1P (你/房主)</span>
@@ -81,8 +81,8 @@
             <div id="result-ranks"></div>
             <div id="result-penalties" class="result-penalties"></div>
             <div class="result-actions">
-                <button class="btn-restart btn-primary" onclick="gameController.initGame(false)">再来一局</button>
-                <button class="btn-reset-new" onclick="gameController.handleResetAndNewRoom()">新建房间 (重置)</button>
+                <button class="btn-restart" onclick="gameController.initGame(false)">再来一局</button>
+                <button onclick="gameController.handleResetAndNewRoom()">新建房间 (重置)</button>
             </div>
         </div>
     </div>
