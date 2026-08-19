@@ -190,15 +190,24 @@ class GameController {
     }
 
     isHumanPlayer = idx => this.p2p?.playersInfo?.[idx] ? !this.p2p.playersInfo[idx].isAI : idx === 0;
-    getPlayerDisplayName = idx => {
+
+    // 客観的な基本プレイヤー名（ログ・対局表・共有データ用）
+    getBasePlayerName = idx => {
         const info = this.p2p?.playersInfo?.[idx];
         if (info?.name) return info.name;
-        return `${idx + 1}P (${idx === this.mySeat ? (this.p2p?.isHost ? '你/房主' : '你') : (this.isHumanPlayer(idx) ? '玩家' : '电脑')})`;
+        if (idx === 0) return '1P (房主)';
+        return this.isHumanPlayer(idx) ? `${idx + 1}P (玩家)` : `${idx + 1}P (电脑)`;
+    };
+
+    // 自分のクライアント画面限定の表示名（バッジ用: 自分にのみ「(你)」を付ける）
+    getMemberBadgeName = idx => {
+        const base = this.getBasePlayerName(idx);
+        return idx === this.mySeat ? `${base} (你)` : base;
     };
 
     updateRoomMembersDisplay() {
         const el = UIController.$('room-members-display');
-        if (el) el.innerHTML = [0, 1, 2, 3].map(i => `<span class="member-badge ${this.isHumanPlayer(i) ? 'human' : 'cpu'}">${this.getPlayerDisplayName(i)}</span>`).join(' ');
+        if (el) el.innerHTML = [0, 1, 2, 3].map(i => `<span class="member-badge ${this.isHumanPlayer(i) ? 'human' : 'cpu'}">${this.getMemberBadgeName(i)}</span>`).join(' ');
     }
 
     initP2PEvents() {
@@ -207,7 +216,7 @@ class GameController {
         this.p2p.onActionReceived = (p, a, pl) => this.handleRemoteAction(p, a, pl);
         this.p2p.onPromptReceived = opt => this.handleRemotePrompt(opt);
         this.p2p.onRoomUpdate = () => {
-            this.state.players.forEach((p, i) => { p.name = this.getPlayerDisplayName(i); });
+            this.state.players.forEach((p, i) => { p.name = this.getBasePlayerName(i); });
             this.updateRoomMembersDisplay();
             this.ui.render(this.state, this.mySeat);
         };
@@ -219,7 +228,7 @@ class GameController {
         const tingEl = UIController.$('ting-info'); if (tingEl) tingEl.style.display = 'none';
 
         this.state.reset();
-        this.state.players.forEach((p, i) => { p.name = this.getPlayerDisplayName(i); });
+        this.state.players.forEach((p, i) => { p.name = this.getBasePlayerName(i); });
         this.updateRoomMembersDisplay();
 
         const seed = customSeed || Math.floor(Math.random() * 0xFFFFFFFF);
@@ -244,26 +253,28 @@ class GameController {
     }
 
     handleChangeName() {
-        const current = this.getMyName() || (this.p2p?.isHost ? '1P (房主)' : `${this.mySeat + 1}P`);
+        const current = this.getMyName() || (this.p2p?.isHost ? '1P' : `${this.mySeat + 1}P`);
         const input = prompt('请输入你的玩家昵称 (最多8字):', current);
         if (input == null) return;
-        const name = input.trim().slice(0, 8) || `${this.mySeat + 1}P`;
-        this.setMyName(name);
+        const rawName = input.trim().slice(0, 8) || `${this.mySeat + 1}P`;
+        this.setMyName(rawName);
+
+        const formattedName = this.p2p?.isHost ? `${rawName} (房主)` : rawName;
 
         if (this.p2p?.isHost) {
-            this.p2p.playersInfo[0].name = `${name} (房主)`;
-            this.state.players[0].name = `${name} (房主)`;
+            this.p2p.playersInfo[0].name = formattedName;
+            this.state.players[0].name = formattedName;
             this.p2p.broadcastRoomInfo();
             this.syncStateToPeers();
             this.updateRoomMembersDisplay();
             this.ui.render(this.state, this.mySeat);
-            this.log(`房主昵称已修改为: ${name}`);
+            this.log(`房主昵称已修改为: ${rawName}`);
         } else {
-            if (this.state.players[this.mySeat]) this.state.players[this.mySeat].name = name;
-            this.p2p?.sendAction('SET_NAME', { name });
+            if (this.state.players[this.mySeat]) this.state.players[this.mySeat].name = formattedName;
+            this.p2p?.sendAction('SET_NAME', { name: formattedName });
             this.updateRoomMembersDisplay();
             this.ui.render(this.state, this.mySeat);
-            this.log(`昵称已修改为: ${name}`);
+            this.log(`昵称已修改为: ${rawName}`);
         }
     }
 
@@ -401,7 +412,7 @@ class GameController {
             const drawn = this.state.wall.pop();
             this.state.wallCount = this.state.wall.length;
             p.hand.push(drawn);
-            if (this.state.currentTurn === this.mySeat) this.log(`摸 ${isRinshan ? '[杠上牌] ' : ''}${this.engine.tileToString(drawn)}`);
+            this.log(`${p.name} 摸 ${isRinshan ? '[杠上牌] ' : ''}${this.engine.tileToString(drawn)}`);
             this.ui.render(this.state, this.mySeat);
         } else if (!isRinshan) {
             this.state.lastActionIsGang = false;
@@ -711,7 +722,7 @@ class GameController {
             this.state.players[this.mySeat].swapTiles = mySwapTiles;
         }
 
-        this.state.players.forEach((p, i) => { p.name = this.getPlayerDisplayName(i); });
+        this.state.players.forEach((p, i) => { p.name = this.getBasePlayerName(i); });
         this.updateRoomMembersDisplay();
 
         const H = {
