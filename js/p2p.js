@@ -77,7 +77,11 @@ class P2PManager {
                 conn.send({ type: 'JOIN_REQ', peerId: this.myPeerId, seatIndex: savedSeat, playerName });
             });
             conn.on('data', data => this._handleHostMsg(data));
-            conn.on('close', () => window.UIController?.log('与房主的连接已断开。'));
+            conn.on('close', () => {
+                const disconnectMsg = '与房主的连接已断开。';
+                if (window.gameController) window.gameController.log(disconnectMsg);
+                else window.UIController?.log(disconnectMsg);
+            });
             conn.once('error', err => { clearTimeout(timeout); reject(err); });
         });
     }
@@ -107,7 +111,9 @@ class P2PManager {
                         }
                         conn.send({ type: 'JOIN_RES', success: true, seatIndex: seat.id, playersInfo: this.playersInfo });
                         this.broadcastRoomInfo();
-                        window.UIController?.log(`${seat.name} 已成功连接加入。`);
+                        const joinMsg = `玩家 ${displayName} (${seat.id + 1}P) 已成功连接进入房间。`;
+                        if (window.gameController) window.gameController.log(joinMsg);
+                        else window.UIController?.log(joinMsg);
                         if (window.gameController?.state) this.broadcastState(window.gameController.state);
                     } else conn.send({ type: 'JOIN_RES', success: false, message: '房间已满员' });
                 },
@@ -123,11 +129,16 @@ class P2PManager {
             setTimeout(() => {
                 const p = !Object.values(this.connections).some(c => c?.peer === conn.peer) && this.playersInfo.find(x => x.peerId === conn.peer);
                 if (p) {
+                    const oldName = p.name;
                     Object.assign(p, { isAI: true, peerId: null, name: `${p.id + 1}P` });
                     if (window.gameController?.state?.players?.[p.id]) window.gameController.state.players[p.id].name = `${p.id + 1}P (电脑)`;
                     this.broadcastRoomInfo();
+                    const leaveMsg = `玩家 ${oldName} (${p.id + 1}P) 已断开连接，转为电脑托管。`;
+                    if (window.gameController) window.gameController.log(leaveMsg);
+                    else window.UIController?.log(leaveMsg);
+                    if (window.gameController?.state) this.broadcastState(window.gameController.state);
                 }
-            }, 4000);
+            }, 3000);
         });
     }
 
@@ -138,7 +149,10 @@ class P2PManager {
                     this.seatIndex = data.seatIndex;
                     this.playersInfo = data.playersInfo;
                     this.onRoomUpdate?.(this.playersInfo, this.seatIndex);
-                    window.UIController?.log(`已成功加入房间 (${this.playersInfo[this.seatIndex]?.name || (this.seatIndex + 1) + 'P'})`);
+                    const myName = this.playersInfo[this.seatIndex]?.name || `${this.seatIndex + 1}P`;
+                    const successMsg = `已成功连接并加入房间 (你是 ${this.seatIndex + 1}P: ${myName})，等待房主开始对局...`;
+                    if (window.gameController) window.gameController.log(successMsg);
+                    else window.UIController?.log(successMsg);
                     this._joinResolve?.();
                 } else {
                     const msg = data.message || '加入失败';
