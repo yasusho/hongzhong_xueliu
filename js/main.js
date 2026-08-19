@@ -6,33 +6,69 @@
 class SoundManager {
     constructor() {
         if (typeof window === 'undefined') return;
-        const u = () => { this.ctx?.state === 'suspended' && this.ctx.resume().catch(() => {}); };
-        ['click', 'keydown', 'touchstart'].forEach(ev => window.addEventListener(ev, u, { passive: true }));
+        const resumeAudio = () => {
+            if (this._ctx && this._ctx.state === 'suspended') this._ctx.resume().catch(() => {});
+        };
+        ['click', 'keydown', 'touchstart', 'pointerdown'].forEach(ev => window.addEventListener(ev, resumeAudio, { passive: true }));
     }
+
     get ctx() {
         if (!this._ctx && typeof window !== 'undefined') {
             const AC = window.AudioContext || window.webkitAudioContext;
-            if (AC) { this._ctx = new AC(); this.gain = this._ctx.createGain(); this.gain.gain.value = 0.5; this.gain.connect(this._ctx.destination); }
+            if (AC) {
+                this._ctx = new AC();
+                this.gain = this._ctx.createGain();
+                this.gain.gain.value = 0.6;
+                this.gain.connect(this._ctx.destination);
+            }
         }
+        if (this._ctx && this._ctx.state === 'suspended') this._ctx.resume().catch(() => {});
         return this._ctx;
     }
+
     play(type) {
-        if (!this.ctx) return;
+        const c = this.ctx;
+        if (!c) return;
         const H = {
-            discard: () => this._tone('triangle', (f, t) => { f.setValueAtTime(320, t); f.exponentialRampToValueAtTime(80, t + 0.08); }, 0.4, 0.08),
-            select: () => this._tone('sine', (f, t) => f.setValueAtTime(600, t), 0.25, 0.05),
-            action: () => this._tone('triangle', (f, t) => { f.setValueAtTime(440, t); f.setValueAtTime(880, t + 0.06); }, 0.35, 0.14),
-            hu: () => [523.25, 659.25, 783.99, 1046.5].forEach((freq, i) => this._tone('triangle', (f, t) => f.setValueAtTime(freq, t), 0.35, 0.18, i * 0.08))
+            discard: () => {
+                this._tone('triangle', (f, t) => { f.setValueAtTime(360, t); f.exponentialRampToValueAtTime(80, t + 0.07); }, 0.5, 0.07);
+            },
+            select: () => {
+                this._tone('sine', (f, t) => { f.setValueAtTime(750, t); }, 0.25, 0.05);
+            },
+            action: () => {
+                this._tone('triangle', (f, t) => { f.setValueAtTime(523, t); }, 0.35, 0.08, 0);
+                this._tone('triangle', (f, t) => { f.setValueAtTime(880, t); }, 0.35, 0.12, 0.07);
+            },
+            hu: () => {
+                [523.25, 659.25, 783.99, 1046.5].forEach((freq, i) => {
+                    this._tone('triangle', (f, t) => { f.setValueAtTime(freq, t); }, 0.4, 0.22, i * 0.09);
+                });
+            }
         };
         H[type]?.();
     }
+
     _tone(type, freqFn, gainVal, dur, delay = 0) {
         try {
-            const c = this.ctx, t = c.currentTime + delay, osc = c.createOscillator(), g = c.createGain();
-            osc.type = type; freqFn(osc.frequency, t);
-            g.gain.setValueAtTime(gainVal, t); g.gain.linearRampToValueAtTime(0.01, t + dur);
-            osc.connect(g).connect(this.gain || c.destination);
-            osc.start(t); osc.stop(t + dur);
+            const c = this.ctx;
+            if (!c) return;
+            const t = c.currentTime + delay;
+            const osc = c.createOscillator();
+            const g = c.createGain();
+
+            osc.type = type;
+            freqFn(osc.frequency, t);
+
+            g.gain.setValueAtTime(0.001, t);
+            g.gain.linearRampToValueAtTime(gainVal, t + 0.005);
+            g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+
+            osc.connect(g);
+            g.connect(this.gain || c.destination);
+
+            osc.start(t);
+            osc.stop(t + dur);
         } catch (e) {}
     }
 }
@@ -703,6 +739,16 @@ class GameController {
     handleRemoteStateSync(remoteState) {
         const isNewGame = Boolean(remoteState.gameSeed && this.state.gameSeed !== remoteState.gameSeed);
 
+        // リモートの打牌・鳴き・和了の効果音同期
+        if (remoteState.lastDiscard && (!this.state.lastDiscard || this.state.lastDiscard.tile?.id !== remoteState.lastDiscard.tile?.id)) {
+            this.sound.play('discard');
+        }
+        const totalHuRemote = (remoteState.players || []).reduce((acc, p) => acc + (p.huRecords?.length || 0), 0);
+        const totalHuLocal = (this.state.players || []).reduce((acc, p) => acc + (p.huRecords?.length || 0), 0);
+        if (totalHuRemote > totalHuLocal) {
+            this.sound.play('hu');
+        }
+
         if (isNewGame) {
             this.state.selectedSwapIndices = [];
             if (this.state.players) this.state.players.forEach(p => { p.swapTiles = []; p.que = null; });
@@ -764,6 +810,7 @@ class GameController {
     }
 
     handleRemotePrompt(opt) {
+        this.sound.play('action');
         this.ui.showActionBox(opt.canHu, opt.canGang, opt.canPung,
             () => { this.ui.hideActionBox(); this.p2p.sendAction('RESPONSE_OFFTURN', { choice: 'HU', tile: opt.tile, fromPlayer: opt.fromPlayer }); },
             () => { this.ui.hideActionBox(); this.p2p.sendAction('RESPONSE_OFFTURN', { choice: 'GANG', tile: opt.tile, fromPlayer: opt.fromPlayer }); },
