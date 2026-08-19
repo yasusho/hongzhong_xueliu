@@ -28,13 +28,17 @@ class GameController {
     }
 
     get mySeat() {
-        return this.isOnline ? this.p2p.seatIndex : 0;
+        if (this.p2p && !this.p2p.isHost) {
+            return (this.p2p.seatIndex !== undefined && this.p2p.seatIndex !== null) ? this.p2p.seatIndex : 1;
+        }
+        return 0;
     }
 
     isHumanPlayer(pIndex) {
-        if (!this.isOnline) return pIndex === 0;
-        const pInfo = this.p2p.playersInfo[pIndex];
-        return pInfo ? !pInfo.isAI : (pIndex === 0);
+        if (this.p2p && this.p2p.playersInfo && this.p2p.playersInfo[pIndex]) {
+            return !this.p2p.playersInfo[pIndex].isAI;
+        }
+        return pIndex === 0;
     }
 
     initP2PEvents() {
@@ -164,7 +168,7 @@ class GameController {
     }
 
     syncStateToPeers() {
-        if (this.isOnline && this.p2p && this.p2p.isHost) {
+        if (this.p2p && this.p2p.isHost) {
             this.p2p.broadcastState(this.state);
             try {
                 sessionStorage.setItem('hz_live_state', JSON.stringify({
@@ -239,7 +243,7 @@ class GameController {
         this.ui.hideInstruction();
         this.log('已提交换牌，等待其他玩家...');
 
-        if (this.isOnline && !this.p2p.isHost) {
+        if (this.p2p && !this.p2p.isHost) {
             this.p2p.sendAction('CONFIRM_SWAP', { swapTiles: userPlayer.swapTiles, swapTileIds: swapTileIds });
             return;
         }
@@ -305,10 +309,10 @@ class GameController {
         }
         this.ui.hideInstruction();
         this.ui.render(this.state, this.mySeat);
+        this.log(`已选择缺${CONFIG.SUITS[suit]}，等待其他玩家...`);
 
-        if (this.isOnline && !this.p2p.isHost) {
+        if (this.p2p && !this.p2p.isHost) {
             this.p2p.sendAction('SELECT_QUE', { que: suit });
-            this.log(`已选择缺${CONFIG.SUITS[suit]}，等待其他玩家...`);
             return;
         }
 
@@ -399,7 +403,7 @@ class GameController {
     }
 
     handleActionClick(action, payload) {
-        if (this.isOnline && !this.p2p.isHost) {
+        if (this.p2p && !this.p2p.isHost) {
             this.p2p.sendAction(action, payload);
             this.ui.hideActionBox();
             return;
@@ -441,7 +445,7 @@ class GameController {
                 return;
             }
 
-            if (this.isOnline && !this.p2p.isHost) {
+            if (this.p2p && !this.p2p.isHost) {
                 this.p2p.sendAction('DISCARD', { handIndex: index });
                 return;
             }
