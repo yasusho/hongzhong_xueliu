@@ -50,12 +50,6 @@ class GameController {
         this.pendingOffTurnHu = null;
         this.pendingOffTurnPungGang = null;
 
-        if (!isOnlineMatch) {
-            if (this.p2p) this.p2p.reset();
-            const bar = typeof document !== 'undefined' ? document.getElementById('room-bar') : null;
-            if (bar) bar.style.display = 'none';
-        }
-
         this.ui.hideInstruction();
         this.ui.hideResultModal();
         this.ui.hideActionBox();
@@ -1006,6 +1000,8 @@ if (typeof window !== 'undefined') {
             }
         }
 
+        // 初期状態で4桁の部屋コードを生成・常時表示
+        gameController.handleCreateRoom();
         gameController.initGame(false);
     });
 }
