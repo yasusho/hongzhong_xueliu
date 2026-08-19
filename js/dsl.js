@@ -1,10 +1,5 @@
 /**
  * 紅中血流成河麻雀 - 決定論的DSLインタプリタ & VM (Deterministic Game DSL)
- * 状態同期ズレ (Desync) ゼロを保証する純粋状態変更エンジン
- */
-
-/**
- * 1. 決定論的PRNG (Mulberry32)
  */
 class DeterministicPRNG {
     constructor(seed = 12345678) {
@@ -24,8 +19,7 @@ class DeterministicPRNG {
 
     nextInt(min, max) {
         if (min > max) [min, max] = [max, min];
-        const range = max - min + 1;
-        return min + (this.nextUint32() % range);
+        return min + (this.nextUint32() % (max - min + 1));
     }
 
     clone() {
@@ -35,96 +29,64 @@ class DeterministicPRNG {
     }
 }
 
-/**
- * 2. 決定論的DSL仮想マシン (Deterministic VM)
- */
 class DeterministicVM {
-    /**
-     * 純粋関数エントリポイント:
-     * execute(initialState, script, context) -> { ok, value: { nextState, uiEvents, triggeredSequences } }
-     */
     static execute(initialState, script, context) {
-        // イミュータブル保証 (ディープコピー)
         const state = JSON.parse(JSON.stringify(initialState));
         const uiEvents = [];
         const triggeredSequences = [];
 
         try {
             if (!script || !Array.isArray(script.instructions)) {
-                throw new Error('Invalid Script AST: instructions array is missing');
+                throw new Error('Invalid Script AST: instructions array missing');
             }
             this.executeBlock(script.instructions, state, context, uiEvents, triggeredSequences);
-            return {
-                ok: true,
-                value: {
-                    nextState: state,
-                    uiEvents,
-                    triggeredSequences
-                }
-            };
+            return { ok: true, value: { nextState: state, uiEvents, triggeredSequences } };
         } catch (err) {
-            return {
-                ok: false,
-                error: err && err.message ? err.message : String(err)
-            };
+            return { ok: false, error: err && err.message ? err.message : String(err) };
         }
     }
 
     static executeBlock(instructions, state, ctx, uiEvents, triggers) {
         for (const inst of instructions) {
             switch (inst.type) {
-                case 'SET_STATE': {
-                    const val = this.evalExpr(inst.value, state, ctx);
-                    this.setNestedPath(state, inst.path, val);
+                case 'SET_STATE':
+                    this.setNestedPath(state, inst.path, this.evalExpr(inst.value, state, ctx));
                     break;
-                }
                 case 'MODIFY_NUMERIC': {
                     const delta = this.evalExpr(inst.delta, state, ctx);
-                    if (typeof delta !== 'number') throw new Error(`MODIFY_NUMERIC delta is not a number: ${delta}`);
                     const current = this.getNestedPath(state, inst.path) ?? 0;
-                    if (typeof current !== 'number') throw new Error(`Target at path ${inst.path.join('.')} is not a number`);
                     this.setNestedPath(state, inst.path, current + delta);
                     break;
                 }
-                case 'VAR_ASSIGN': {
-                    const val = this.evalExpr(inst.value, state, ctx);
-                    ctx.variables.set(inst.name, val);
+                case 'VAR_ASSIGN':
+                    ctx.variables.set(inst.name, this.evalExpr(inst.value, state, ctx));
                     break;
-                }
-                case 'IF': {
-                    const cond = this.evalExpr(inst.condition, state, ctx);
-                    if (Boolean(cond)) {
+                case 'IF':
+                    if (Boolean(this.evalExpr(inst.condition, state, ctx))) {
                         this.executeBlock(inst.then, state, ctx, uiEvents, triggers);
                     } else if (inst.else) {
                         this.executeBlock(inst.else, state, ctx, uiEvents, triggers);
                     }
                     break;
-                }
                 case 'REPEAT': {
-                    const count = this.evalExpr(inst.count, state, ctx);
-                    if (typeof count !== 'number') throw new Error('REPEAT count must be a number');
-                    for (let i = 0; i < count; i++) {
-                        this.executeBlock(inst.body, state, ctx, uiEvents, triggers);
-                    }
+                    const count = this.evalExpr(inst.count, state, ctx) || 0;
+                    for (let i = 0; i < count; i++) this.executeBlock(inst.body, state, ctx, uiEvents, triggers);
                     break;
                 }
                 case 'ROLL_DICE': {
                     const count = this.evalExpr(inst.count, state, ctx) || 1;
                     const sides = this.evalExpr(inst.sides, state, ctx) || 6;
-                    const rolls = [];
-                    for (let i = 0; i < count; i++) {
-                        rolls.push(ctx.prng.nextInt(1, sides));
-                    }
+                    const rolls = Array.from({ length: count }, () => ctx.prng.nextInt(1, sides));
                     ctx.variables.set(inst.targetVar, rolls);
                     break;
                 }
                 case 'SHUFFLE_LIST': {
                     const list = this.getNestedPath(state, inst.path);
-                    if (!Array.isArray(list)) throw new Error(`Target at path ${inst.path.join('.')} is not an array`);
-                    // 決定論的 Fisher-Yates シャッフル
-                    for (let i = list.length - 1; i > 0; i--) {
-                        const j = ctx.prng.nextInt(0, i);
-                        [list[i], list[j]] = [list[j], list[i]];
+                    if (Array.isArray(list)) {
+                        for (let i = list.length - 1; i > 0; i--) {
+                            const j = ctx.prng.nextInt(0, i);
+                            [list[i], list[j]] = [list[j], list[i]];
+                        }
                     }
                     break;
                 }
@@ -141,9 +103,7 @@ class DeterministicVM {
                 case 'DISPATCH_TRIGGER': {
                     const payload = {};
                     if (inst.payload) {
-                        for (const [k, vExpr] of Object.entries(inst.payload)) {
-                            payload[k] = this.evalExpr(vExpr, state, ctx);
-                        }
+                        for (const [k, vExpr] of Object.entries(inst.payload)) payload[k] = this.evalExpr(vExpr, state, ctx);
                     }
                     triggers.push({ triggerId: inst.triggerId, payload });
                     break;
@@ -151,36 +111,22 @@ class DeterministicVM {
                 case 'EMIT_UI_EVENT': {
                     const payload = {};
                     if (inst.payload) {
-                        for (const [k, vExpr] of Object.entries(inst.payload)) {
-                            payload[k] = this.evalExpr(vExpr, state, ctx);
-                        }
+                        for (const [k, vExpr] of Object.entries(inst.payload)) payload[k] = this.evalExpr(vExpr, state, ctx);
                     }
-                    uiEvents.push({
-                        sequenceId: ctx.sequenceId,
-                        eventType: inst.eventType,
-                        payload
-                    });
+                    uiEvents.push({ sequenceId: ctx.sequenceId, eventType: inst.eventType, payload });
                     break;
                 }
-                default:
-                    throw new Error(`Unknown DSL instruction type: ${inst.type}`);
             }
         }
     }
 
-    // --- 式評価器 ---
     static evalExpr(expr, state, ctx) {
-        if (expr === null || expr === undefined) return null;
-        if (typeof expr !== 'object') return expr;
+        if (expr === null || expr === undefined || typeof expr !== 'object') return expr;
 
         switch (expr.type) {
-            case 'LITERAL':
-                return expr.value;
-            case 'VAR':
-                if (!ctx.variables.has(expr.name)) return null;
-                return ctx.variables.get(expr.name);
-            case 'STATE_GET':
-                return this.getNestedPath(state, expr.path);
+            case 'LITERAL': return expr.value;
+            case 'VAR': return ctx.variables.get(expr.name) ?? null;
+            case 'STATE_GET': return this.getNestedPath(state, expr.path);
             case 'RANDOM_INT': {
                 const min = this.evalExpr(expr.min, state, ctx) || 0;
                 const max = this.evalExpr(expr.max, state, ctx) || 100;
@@ -189,35 +135,24 @@ class DeterministicVM {
             case 'BINARY_OP': {
                 const l = this.evalExpr(expr.left, state, ctx);
                 const r = this.evalExpr(expr.right, state, ctx);
-                switch (expr.op) {
-                    case '+': return l + r;
-                    case '-': return l - r;
-                    case '*': return l * r;
-                    case '/': return Math.floor(l / r);
-                    case '%': return l % r;
-                    case '==': return l === r;
-                    case '!=': return l !== r;
-                    case '<': return l < r;
-                    case '<=': return l <= r;
-                    case '>': return l > r;
-                    case '>=': return l >= r;
-                    default: return null;
-                }
+                const ops = {
+                    '+': l + r, '-': l - r, '*': l * r, '/': Math.floor(l / r), '%': l % r,
+                    '==': l === r, '!=': l !== r, '<': l < r, '<=': l <= r, '>': l > r, '>=': l >= r
+                };
+                return ops[expr.op] ?? null;
             }
-            case 'LOGICAL_OP': {
+            case 'LOGICAL_OP':
                 if (expr.op === 'NOT') return !this.evalExpr(expr.args[0], state, ctx);
                 if (expr.op === 'AND') return expr.args.every(a => Boolean(this.evalExpr(a, state, ctx)));
                 if (expr.op === 'OR') return expr.args.some(a => Boolean(this.evalExpr(a, state, ctx)));
                 return false;
-            }
-            default:
-                return expr;
+            default: return expr;
         }
     }
 
     static getNestedPath(obj, path) {
         if (!path || !Array.isArray(path)) return undefined;
-        return path.reduce((curr, key) => (curr !== undefined && curr !== null ? curr[key] : undefined), obj);
+        return path.reduce((curr, key) => (curr != null ? curr[key] : undefined), obj);
     }
 
     static setNestedPath(obj, path, value) {
@@ -232,9 +167,6 @@ class DeterministicVM {
     }
 }
 
-/**
- * 3. イベントトリガー解決エンジン (Resolution Queue)
- */
 class TriggerResolutionEngine {
     constructor() {
         this.scriptRegistry = new Map();
@@ -244,18 +176,12 @@ class TriggerResolutionEngine {
         this.scriptRegistry.set(id, script);
     }
 
-    /**
-     * アクションの実行および連鎖トリガーの完全解決
-     */
     executeAction(initialState, initialScript, baseContext) {
         let currentState = initialState;
         const prng = new DeterministicPRNG(baseContext.baseSeed || 12345678);
         let sequenceCounter = 0;
-
         const allEvents = [];
-        const queue = [
-            { script: initialScript, actorId: baseContext.actorId || '0', variables: new Map() }
-        ];
+        const queue = [{ script: initialScript, actorId: baseContext.actorId || '0', variables: new Map() }];
 
         while (queue.length > 0) {
             const task = queue.shift();
@@ -270,30 +196,20 @@ class TriggerResolutionEngine {
             };
 
             const result = DeterministicVM.execute(currentState, task.script, context);
-            if (!result.ok) {
-                throw new Error(`DSL Execution Failure at seq ${sequenceCounter}: ${result.error}`);
-            }
+            if (!result.ok) throw new Error(`DSL Failure at seq ${sequenceCounter}: ${result.error}`);
 
             currentState = result.value.nextState;
             allEvents.push(...result.value.uiEvents);
 
-            // 連鎖トリガーのキュー追加
             for (const trigger of result.value.triggeredSequences) {
                 const script = this.scriptRegistry.get(trigger.triggerId);
-                if (script) {
-                    const varMap = new Map(Object.entries(trigger.payload));
-                    queue.push({ script, actorId: task.actorId, variables: varMap });
-                }
+                if (script) queue.push({ script, actorId: task.actorId, variables: new Map(Object.entries(trigger.payload)) });
             }
         }
 
-        const finalHash = this.computeStateHash(currentState);
-        return { finalState: currentState, allEvents, finalHash };
+        return { finalState: currentState, allEvents, finalHash: this.computeStateHash(currentState) };
     }
 
-    /**
-     * FNV-1a による状態ハッシュ計算 (Desync検知用)
-     */
     computeStateHash(state) {
         const canonicalJson = JSON.stringify(state, Object.keys(state).sort());
         let hash = 0x811c9dc5;
@@ -305,11 +221,6 @@ class TriggerResolutionEngine {
     }
 }
 
-// CommonJS & Browser export
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = {
-        DeterministicPRNG,
-        DeterministicVM,
-        TriggerResolutionEngine
-    };
+    module.exports = { DeterministicPRNG, DeterministicVM, TriggerResolutionEngine };
 }

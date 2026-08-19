@@ -1,14 +1,18 @@
 /**
- * 紅中血流成河麻雀 - WebRTC P2P (PeerJS) 通信マネージャー
+ * 紅中血流成河麻雀 - WebRTC P2P (PeerJS) 通信マネージャー (P2PManager)
  */
 class P2PManager {
     constructor() {
         this.reset();
-        this.roomCode = String(Math.floor(1000 + Math.random() * 9000));
+        this.roomCode = this._genRoomCode();
         this.onStateReceived = null;
         this.onActionReceived = null;
         this.onRoomUpdate = null;
         this.onPromptReceived = null;
+    }
+
+    _genRoomCode() {
+        return String(Math.floor(1000 + Math.random() * 9000));
     }
 
     reset() {
@@ -32,14 +36,12 @@ class P2PManager {
 
     initPeer(customId = null) {
         return new Promise((resolve, reject) => {
-            if (typeof Peer === 'undefined') {
-                return reject(new Error('PeerJS库未加载，请检查网络连接'));
-            }
+            if (typeof Peer === 'undefined') return reject(new Error('PeerJS库未加载'));
             if (this.peer && !this.peer.destroyed) {
                 try { this.peer.destroy(); } catch (e) {}
             }
 
-            const id = customId || ('hz' + (this.roomCode || Math.floor(1000 + Math.random() * 9000)));
+            const id = customId || ('hz' + (this.roomCode || this._genRoomCode()));
             try {
                 this.peer = new Peer(id, {
                     debug: 1,
@@ -63,13 +65,12 @@ class P2PManager {
             });
 
             this.peer.on('error', (err) => {
-                console.error('Peer error:', err);
                 if (!resolved) {
                     resolved = true;
                     if (err.type === 'unavailable-id') {
-                        const fallbackCode = String(Math.floor(1000 + Math.random() * 9000));
-                        this.roomCode = fallbackCode;
-                        this.initPeer('hz' + fallbackCode).then(resolve).catch(reject);
+                        const fallback = this._genRoomCode();
+                        this.roomCode = fallback;
+                        this.initPeer('hz' + fallback).then(resolve).catch(reject);
                     } else {
                         reject(err);
                     }
@@ -82,28 +83,19 @@ class P2PManager {
 
     async createRoom(code = null) {
         this.reset();
-        const code4 = code || String(Math.floor(1000 + Math.random() * 9000));
+        const code4 = code || this._genRoomCode();
         this.roomCode = code4;
         this.isHost = true;
         this.seatIndex = 0;
         this.playersInfo[0] = { id: 0, name: '1P (房主)', isAI: false, peerId: 'hz' + code4 };
 
-        // 待ち時間ゼロで即座にUIへ反映
-        if (typeof document !== 'undefined') {
-            const codeEl = document.getElementById('room-code-display');
-            if (codeEl) codeEl.innerText = code4;
-            const roleEl = document.getElementById('room-role-display');
-            if (roleEl) roleEl.innerText = '(房主)';
-        }
+        this._updateUI(code4, '(房主)');
 
         try {
             const actualId = await this.initPeer('hz' + code4);
             const actualCode = actualId.startsWith('hz') ? actualId.substring(2) : actualId;
             this.roomCode = actualCode;
-            if (typeof document !== 'undefined') {
-                const codeEl = document.getElementById('room-code-display');
-                if (codeEl) codeEl.innerText = actualCode;
-            }
+            this._updateUI(actualCode);
             return actualCode;
         } catch (err) {
             console.warn('P2P connection warning:', err);
@@ -113,8 +105,8 @@ class P2PManager {
 
     async joinRoom(targetRoomCode, savedSeatIndex = null) {
         this.reset();
-        let code = String(targetRoomCode).trim();
-        let targetId = code.startsWith('hz') ? code : ('hz' + code);
+        const code = String(targetRoomCode).trim();
+        const targetId = code.startsWith('hz') ? code : ('hz' + code);
 
         await this.initPeer();
         this.isHost = false;
@@ -124,34 +116,32 @@ class P2PManager {
             const conn = this.peer.connect(targetId, { reliable: true });
             this.hostConn = conn;
 
-            const timeout = setTimeout(() => {
-                reject(new Error('连接超时: 未找到对应房间号或房主未在线'));
-            }, 10000);
+            const timeout = setTimeout(() => reject(new Error('连接超时: 未找到对应房间号或房主未在线')), 10000);
 
-            const onOpen = () => {
+            conn.on('open', () => {
                 clearTimeout(timeout);
                 conn.send({ type: 'JOIN_REQ', peerId: this.myPeerId, seatIndex: savedSeatIndex });
                 resolve();
-            };
-
-            conn.on('open', onOpen);
+            });
             conn.on('data', (data) => this.handleHostMessage(data));
-            conn.on('close', () => {
-                if (typeof UIController !== 'undefined') UIController.log('房主已断开连接。');
-            });
-            conn.on('error', (err) => {
-                clearTimeout(timeout);
-                reject(err);
-            });
+            conn.on('close', () => { if (typeof UIController !== 'undefined') UIController.log('房主已断开连接。'); });
+            conn.on('error', (err) => { clearTimeout(timeout); reject(err); });
         });
+    }
+
+    _updateUI(code, roleText = null) {
+        if (typeof document === 'undefined') return;
+        const codeEl = document.getElementById('room-code-display');
+        if (codeEl && code) codeEl.innerText = code;
+        if (roleText) {
+            const roleEl = document.getElementById('room-role-display');
+            if (roleEl) roleEl.innerText = roleText;
+        }
     }
 
     handleIncomingConnection(conn) {
         this.connections[conn.peer] = conn;
-
-        conn.on('open', () => {
-            this.connections[conn.peer] = conn;
-        });
+        conn.on('open', () => { this.connections[conn.peer] = conn; });
 
         conn.on('data', (data) => {
             if (!data || !data.type) return;
@@ -168,12 +158,7 @@ class P2PManager {
                     seat.isAI = false;
                     seat.peerId = conn.peer;
                     seat.name = `${seat.id + 1}P`;
-                    conn.send({
-                        type: 'JOIN_RES',
-                        success: true,
-                        seatIndex: seat.id,
-                        playersInfo: this.playersInfo
-                    });
+                    conn.send({ type: 'JOIN_RES', success: true, seatIndex: seat.id, playersInfo: this.playersInfo });
                     this.broadcastRoomInfo();
                     if (typeof UIController !== 'undefined') UIController.log(`${seat.name} 已连接。`);
                     if (typeof gameController !== 'undefined' && gameController.state) {
@@ -188,17 +173,14 @@ class P2PManager {
                     const found = this.playersInfo.find(p => p.peerId === conn.peer);
                     if (found) pIndex = found.id;
                 }
-                if (this.onActionReceived) {
-                    this.onActionReceived(pIndex, data.action, data.payload);
-                }
+                if (this.onActionReceived) this.onActionReceived(pIndex, data.action, data.payload);
             }
         });
 
         conn.on('close', () => {
             delete this.connections[conn.peer];
             setTimeout(() => {
-                const stillConnected = Object.values(this.connections).some(c => c && c.peer === conn.peer);
-                if (!stillConnected) {
+                if (!Object.values(this.connections).some(c => c && c.peer === conn.peer)) {
                     const p = this.playersInfo.find(x => x.peerId === conn.peer);
                     if (p) {
                         p.isAI = true;
@@ -263,24 +245,16 @@ class P2PManager {
             }))
         };
 
-        Object.values(this.connections).forEach(conn => {
-            if (conn && conn.open) conn.send({ type: 'SYNC_STATE', state: serialized });
-        });
+        this.broadcast({ type: 'SYNC_STATE', state: serialized });
     }
 
     sendToSeat(seatIndex, data) {
         if (!this.isHost) return false;
         const targetPlayer = this.playersInfo[seatIndex];
         if (!targetPlayer || targetPlayer.isAI || !targetPlayer.peerId) return false;
-
         const conn = this.connections[targetPlayer.peerId];
         if (conn && conn.open) {
-            try {
-                conn.send(data);
-                return true;
-            } catch(e) {
-                return false;
-            }
+            try { conn.send(data); return true; } catch(e) { return false; }
         }
         return false;
     }

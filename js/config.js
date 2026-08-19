@@ -33,8 +33,8 @@ const CONFIG = {
     NO_TING_DEFAULT: 800,
 
     DELAYS: {
-        AI_TURN: 300,
-        AUTO_ACTION: 400
+        AI_TURN: 100,
+        AUTO_ACTION: 100
     }
 };
 

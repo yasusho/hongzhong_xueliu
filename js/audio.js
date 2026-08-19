@@ -1,5 +1,5 @@
 /**
- * 紅中血流成河麻雀 - Web Audio API 音響効果
+ * 紅中血流成河麻雀 - Web Audio API 音響効果 (SoundManager)
  */
 class SoundManager {
     constructor() {
@@ -12,9 +12,7 @@ class SoundManager {
         if (typeof window === 'undefined') return;
         const unlock = () => {
             this.ensureContext();
-            if (this.ctx && this.ctx.state === 'suspended') {
-                this.ctx.resume().catch(() => {});
-            }
+            if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume().catch(() => {});
         };
         ['click', 'keydown', 'touchstart', 'mousedown'].forEach(ev => {
             window.addEventListener(ev, unlock, { passive: true });
@@ -43,64 +41,38 @@ class SoundManager {
 
     play(type) {
         const ctx = this.ensureContext();
-        if (!ctx || ctx.state !== 'running') {
-            if (ctx && ctx.state === 'suspended') {
-                ctx.resume().then(() => this.playTone(type, ctx)).catch(() => {});
-                return;
-            }
+        if (!ctx) return;
+        if (ctx.state === 'suspended') {
+            ctx.resume().then(() => this.playTone(type, ctx)).catch(() => {});
+            return;
         }
         this.playTone(type, ctx);
     }
 
-    playTone(type, ctx) {
-        if (!ctx) return;
-        const now = ctx.currentTime;
-        const dest = this.masterGain || ctx.destination;
+    _tone(ctx, type, freqFn, gainVal, dur, delay = 0) {
+        const now = ctx.currentTime + delay;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = type;
+        freqFn(osc.frequency, now);
+        gain.gain.setValueAtTime(gainVal, now);
+        gain.gain.linearRampToValueAtTime(0.01, now + dur);
+        osc.connect(gain).connect(this.masterGain || ctx.destination);
+        osc.start(now);
+        osc.stop(now + dur);
+    }
 
+    playTone(type, ctx) {
         try {
             if (type === 'discard') {
-                const osc = ctx.createOscillator();
-                const gain = ctx.createGain();
-                osc.type = 'triangle';
-                osc.frequency.setValueAtTime(320, now);
-                osc.frequency.exponentialRampToValueAtTime(80, now + 0.08);
-                gain.gain.setValueAtTime(0.4, now);
-                gain.gain.linearRampToValueAtTime(0.01, now + 0.08);
-                osc.connect(gain).connect(dest);
-                osc.start(now);
-                osc.stop(now + 0.08);
+                this._tone(ctx, 'triangle', (f, t) => { f.setValueAtTime(320, t); f.exponentialRampToValueAtTime(80, t + 0.08); }, 0.4, 0.08);
             } else if (type === 'select') {
-                const osc = ctx.createOscillator();
-                const gain = ctx.createGain();
-                osc.type = 'sine';
-                osc.frequency.setValueAtTime(600, now);
-                gain.gain.setValueAtTime(0.25, now);
-                gain.gain.linearRampToValueAtTime(0.01, now + 0.05);
-                osc.connect(gain).connect(dest);
-                osc.start(now);
-                osc.stop(now + 0.05);
+                this._tone(ctx, 'sine', (f, t) => f.setValueAtTime(600, t), 0.25, 0.05);
             } else if (type === 'action') {
-                const osc = ctx.createOscillator();
-                const gain = ctx.createGain();
-                osc.type = 'triangle';
-                osc.frequency.setValueAtTime(440, now);
-                osc.frequency.setValueAtTime(880, now + 0.06);
-                gain.gain.setValueAtTime(0.35, now);
-                gain.gain.linearRampToValueAtTime(0.01, now + 0.14);
-                osc.connect(gain).connect(dest);
-                osc.start(now);
-                osc.stop(now + 0.14);
+                this._tone(ctx, 'triangle', (f, t) => { f.setValueAtTime(440, t); f.setValueAtTime(880, t + 0.06); }, 0.35, 0.14);
             } else if (type === 'hu') {
                 [523.25, 659.25, 783.99, 1046.50].forEach((freq, idx) => {
-                    const osc = ctx.createOscillator();
-                    const gain = ctx.createGain();
-                    osc.type = 'triangle';
-                    osc.frequency.setValueAtTime(freq, now + idx * 0.08);
-                    gain.gain.setValueAtTime(0.35, now + idx * 0.08);
-                    gain.gain.linearRampToValueAtTime(0.01, now + idx * 0.08 + 0.18);
-                    osc.connect(gain).connect(dest);
-                    osc.start(now + idx * 0.08);
-                    osc.stop(now + idx * 0.08 + 0.18);
+                    this._tone(ctx, 'triangle', (f, t) => f.setValueAtTime(freq, t), 0.35, 0.18, idx * 0.08);
                 });
             }
         } catch (e) {
