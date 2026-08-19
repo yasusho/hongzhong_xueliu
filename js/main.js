@@ -101,6 +101,19 @@ class GameController {
         }
     }
 
+    async handleChangeRoom() {
+        try {
+            sessionStorage.removeItem('hz_session');
+            sessionStorage.removeItem('hz_live_state');
+            const newCode = String(Math.floor(1000 + Math.random() * 9000));
+            await this.handleCreateRoom(newCode);
+            this.initGame(false);
+            this.ui.log(`已切换至新房间: ${newCode} (房主)`);
+        } catch (err) {
+            console.error('更换房间失败:', err);
+        }
+    }
+
     async handleJoinRoom(inputCode = null, savedSeatIndex = null) {
         const code = inputCode || prompt('请输入4位房间号:');
         if (!code) return;

@@ -20,7 +20,7 @@ class P2PManager {
         this.isHost = false;
         this.connections = {};
         this.hostConn = null;
-        this.roomCode = this.roomCode || String(Math.floor(1000 + Math.random() * 9000));
+        this.roomCode = null;
         this.seatIndex = 0;
         this.playersInfo = [
             { id: 0, name: '1P', isAI: false, peerId: null },
@@ -82,7 +82,7 @@ class P2PManager {
 
     async createRoom(code = null) {
         this.reset();
-        const code4 = code || this.roomCode || String(Math.floor(1000 + Math.random() * 9000));
+        const code4 = code || String(Math.floor(1000 + Math.random() * 9000));
         this.roomCode = code4;
         this.isHost = true;
         this.seatIndex = 0;
