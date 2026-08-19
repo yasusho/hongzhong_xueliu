@@ -95,20 +95,22 @@ class GameController {
         try {
             const actualCode = await this.p2p.createRoom(code);
             this.showRoomBar(actualCode, '房主');
+            try { sessionStorage.setItem('hz_session', JSON.stringify({ role: 'host', roomCode: actualCode })); } catch(e) {}
         } catch (err) {
             console.error('初始化房间失败:', err);
         }
     }
 
-    async handleJoinRoom(inputCode = null) {
+    async handleJoinRoom(inputCode = null, savedSeatIndex = null) {
         const code = inputCode || prompt('请输入4位房间号:');
         if (!code) return;
 
         try {
             this.ui.log(`正在加入房间 ${code}...`);
-            await this.p2p.joinRoom(code.trim());
+            await this.p2p.joinRoom(code.trim(), savedSeatIndex);
             this.isOnline = true;
             this.showRoomBar(this.p2p.roomCode, '玩家');
+            try { sessionStorage.setItem('hz_session', JSON.stringify({ role: 'client', roomCode: this.p2p.roomCode, seatIndex: this.p2p.seatIndex })); } catch(e) {}
             this.ui.log(`已加入房间 ${code}，等待房主开始对局...`);
         } catch (err) {
             alert('加入房间失败: ' + (err.message || err));
@@ -985,11 +987,18 @@ if (typeof window !== 'undefined') {
             try { history.replaceState(null, '', window.location.pathname); } catch (e) {}
         }
 
-        // 初期状態で4桁の部屋コードを生成・常時表示
-        const el = document.getElementById('room-code-display');
-        const initialCode = el ? el.innerText.trim() : null;
-        gameController.handleCreateRoom(initialCode);
-        gameController.initGame(false);
+        // セッションから前回の部屋情報を復元
+        let savedSession = null;
+        try { savedSession = JSON.parse(sessionStorage.getItem('hz_session')); } catch(e) {}
+
+        if (savedSession && savedSession.role === 'client' && savedSession.roomCode) {
+            gameController.handleJoinRoom(savedSession.roomCode, savedSession.seatIndex);
+        } else {
+            const el = document.getElementById('room-code-display');
+            const initialCode = (savedSession && savedSession.roomCode) ? savedSession.roomCode : (el ? el.innerText.trim() : null);
+            gameController.handleCreateRoom(initialCode);
+            gameController.initGame(false);
+        }
     });
 }
 

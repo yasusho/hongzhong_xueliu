@@ -111,7 +111,7 @@ class P2PManager {
         }
     }
 
-    async joinRoom(targetRoomCode) {
+    async joinRoom(targetRoomCode, savedSeatIndex = null) {
         this.reset();
         let code = String(targetRoomCode).trim();
         let targetId = code.startsWith('hz') ? code : ('hz' + code);
@@ -130,7 +130,7 @@ class P2PManager {
 
             const onOpen = () => {
                 clearTimeout(timeout);
-                conn.send({ type: 'JOIN_REQ', peerId: this.myPeerId });
+                conn.send({ type: 'JOIN_REQ', peerId: this.myPeerId, seatIndex: savedSeatIndex });
                 resolve();
             };
 
@@ -156,7 +156,14 @@ class P2PManager {
         conn.on('data', (data) => {
             if (!data || !data.type) return;
             if (data.type === 'JOIN_REQ') {
-                const seat = this.playersInfo.find(p => p.id > 0 && p.isAI);
+                let seat = null;
+                if (data.seatIndex !== undefined && data.seatIndex > 0 && data.seatIndex < 4) {
+                    seat = this.playersInfo[data.seatIndex];
+                }
+                if (!seat || (!seat.isAI && seat.peerId && seat.peerId !== conn.peer)) {
+                    seat = this.playersInfo.find(p => p.id > 0 && p.isAI);
+                }
+
                 if (seat) {
                     seat.isAI = false;
                     seat.peerId = conn.peer;
@@ -168,7 +175,10 @@ class P2PManager {
                         playersInfo: this.playersInfo
                     });
                     this.broadcastRoomInfo();
-                    if (typeof UIController !== 'undefined') UIController.log(`${seat.name} 加入了房间。`);
+                    if (typeof UIController !== 'undefined') UIController.log(`${seat.name} 已连接。`);
+                    if (typeof gameController !== 'undefined' && gameController.state) {
+                        this.broadcastState(gameController.state);
+                    }
                 } else {
                     conn.send({ type: 'JOIN_RES', success: false, message: '房间已满员' });
                 }
@@ -181,14 +191,18 @@ class P2PManager {
 
         conn.on('close', () => {
             delete this.connections[conn.peer];
-            const p = this.playersInfo.find(x => x.peerId === conn.peer);
-            if (p) {
-                p.isAI = true;
-                p.peerId = null;
-                p.name = `${p.id + 1}P (CPU)`;
-                this.broadcastRoomInfo();
-                if (typeof UIController !== 'undefined') UIController.log(`${p.name} 已离开，切换为CPU代打。`);
-            }
+            setTimeout(() => {
+                const stillConnected = Object.values(this.connections).some(c => c && c.peer === conn.peer);
+                if (!stillConnected) {
+                    const p = this.playersInfo.find(x => x.peerId === conn.peer);
+                    if (p) {
+                        p.isAI = true;
+                        p.peerId = null;
+                        p.name = `${p.id + 1}P (CPU)`;
+                        this.broadcastRoomInfo();
+                    }
+                }
+            }, 4000);
         });
     }
 

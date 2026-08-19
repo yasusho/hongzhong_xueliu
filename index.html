@@ -29,8 +29,13 @@
     </div>
     <script>
         (function() {
+            var saved = null;
+            try { saved = JSON.parse(sessionStorage.getItem('hz_session')); } catch(e) {}
+            var code = (saved && saved.roomCode) ? saved.roomCode : String(Math.floor(1000 + Math.random() * 9000));
             var el = document.getElementById('room-code-display');
-            if (el) el.innerText = String(Math.floor(1000 + Math.random() * 9000));
+            if (el) el.innerText = code;
+            var roleEl = document.getElementById('room-role-display');
+            if (roleEl) roleEl.innerText = (saved && saved.role === 'client') ? '(玩家)' : '(房主)';
         })();
     </script>
 
