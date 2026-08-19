@@ -243,6 +243,7 @@ class P2PManager {
             lastDiscard: state.lastDiscard,
             lastActionIsGang: state.lastActionIsGang,
             lastGangPlayer: state.lastGangPlayer,
+            logs: state.logs || [],
             players: state.players.map(p => ({
                 id: p.id,
                 name: p.name,

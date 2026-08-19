@@ -16,6 +16,7 @@ class GameState {
         this.selectedSwapIndices = [];
         this.lastActionIsGang = false;
         this.lastGangPlayer = null;
+        this.logs = ['系统就绪。'];
         this.players = [];
 
         for (let i = 0; i < CONFIG.TOTAL_PLAYERS; i++) {

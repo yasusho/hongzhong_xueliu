@@ -15,6 +15,18 @@ class GameController {
         this.initP2PEvents();
     }
 
+    log(text) {
+        if (!this.state.logs) this.state.logs = [];
+        this.state.logs.push(text);
+        if (this.state.logs.length > 50) this.state.logs.shift();
+        this.ui.log(text);
+    }
+
+    clearLog(text = '系统就绪。') {
+        this.state.logs = [text];
+        this.ui.clearLog(text);
+    }
+
     get mySeat() {
         return this.isOnline ? this.p2p.seatIndex : 0;
     }
@@ -72,7 +84,7 @@ class GameController {
         this.state.startPlayer = startPlayer;
         this.state.currentTurn = startPlayer;
 
-        this.ui.clearLog(`新局开始，${this.state.players[startPlayer].name} 起家。`);
+        this.clearLog(`新局开始，${this.state.players[startPlayer].name} 起家。`);
 
         const deck = this.engine.shuffle(this.engine.createDeck());
 
@@ -108,7 +120,7 @@ class GameController {
             const newCode = String(Math.floor(1000 + Math.random() * 9000));
             await this.handleCreateRoom(newCode);
             this.initGame(false);
-            this.ui.log(`已切换至新房间: ${newCode} (房主)`);
+            this.log(`已切换至新房间: ${newCode} (房主)`);
         } catch (err) {
             console.error('更换房间失败:', err);
         }
@@ -119,15 +131,15 @@ class GameController {
         if (!code) return;
 
         try {
-            this.ui.log(`正在加入房间 ${code}...`);
+            this.log(`正在加入房间 ${code}...`);
             await this.p2p.joinRoom(code.trim(), savedSeatIndex);
             this.isOnline = true;
             this.showRoomBar(this.p2p.roomCode, '玩家');
             try { sessionStorage.setItem('hz_session', JSON.stringify({ role: 'client', roomCode: this.p2p.roomCode, seatIndex: this.p2p.seatIndex })); } catch(e) {}
-            this.ui.log(`已加入房间 ${code}，等待房主开始对局...`);
+            this.log(`已加入房间 ${code}，等待房主开始对局...`);
         } catch (err) {
             alert('加入房间失败: ' + (err.message || err));
-            this.ui.log('加入房间失败: ' + (err.message || err));
+            this.log('加入房间失败: ' + (err.message || err));
         }
     }
 
@@ -147,7 +159,7 @@ class GameController {
 
     handleStartGame() {
         if (this.isOnline && this.p2p && !this.p2p.isHost) {
-            this.ui.log('当前为玩家身份，请等待房主点击开始对局。');
+            this.log('当前为玩家身份，请等待房主点击开始对局。');
             return;
         }
         this.startOnlineMatch();
@@ -201,7 +213,7 @@ class GameController {
         const p = this.state.players[this.mySeat];
         const tile = p.hand[index];
         if (!tile || tile.suit === 'HZ') {
-            this.ui.log('红中为万能牌，不能作为换三张牌打出');
+            this.log('红中为万能牌，不能作为换三张牌打出');
             return;
         }
 
@@ -234,7 +246,7 @@ class GameController {
         if (this.isOnline && !this.p2p.isHost) {
             this.p2p.sendAction('CONFIRM_SWAP', { swapTiles: userPlayer.swapTiles, swapTileIds: swapTileIds });
             this.ui.hideInstruction();
-            this.ui.log('已提交换牌，等待其他玩家...');
+            this.log('已提交换牌，等待其他玩家...');
             return;
         }
 
@@ -265,7 +277,7 @@ class GameController {
             this.state.players[nextP].hand.push(...swappedGroups[p]);
         }
 
-        this.ui.log('换三张完成。');
+        this.log('换三张完成。');
         this.state.sortAllHands();
         this.startDingQuePhase();
     }
@@ -302,7 +314,7 @@ class GameController {
 
         if (this.isOnline && !this.p2p.isHost) {
             this.p2p.sendAction('SELECT_QUE', { que: suit });
-            this.ui.log(`已选择缺${CONFIG.SUITS[suit]}，等待其他玩家...`);
+            this.log(`已选择缺${CONFIG.SUITS[suit]}，等待其他玩家...`);
             return;
         }
 
@@ -320,7 +332,7 @@ class GameController {
         this.state.phase = CONFIG.PHASES.PLAYING;
 
         const queSummary = this.state.players.map(p => `${p.name}缺${CONFIG.SUITS[p.que]}`).join('，');
-        this.ui.log(`定缺完毕: ${queSummary}`);
+        this.log(`定缺完毕: ${queSummary}`);
 
         this.ui.render(this.state, this.mySeat);
         this.syncStateToPeers();
@@ -347,7 +359,7 @@ class GameController {
             const drawnTile = this.state.wall.pop();
             p.hand.push(drawnTile);
             if (this.state.currentTurn === this.mySeat) {
-                this.ui.log(`摸 ${isRinshan ? '[杠上牌] ' : ''}${this.engine.tileToString(drawnTile)}`);
+                this.log(`摸 ${isRinshan ? '[杠上牌] ' : ''}${this.engine.tileToString(drawnTile)}`);
             }
             this.ui.render(this.state, this.mySeat);
         } else if (!isRinshan) {
@@ -415,7 +427,7 @@ class GameController {
 
         if (this.state.phase === CONFIG.PHASES.PLAYING) {
             if (this.state.currentTurn !== this.mySeat) {
-                this.ui.log('当前不是你的手番，请等待其他玩家打牌。');
+                this.log('当前不是你的手番，请等待其他玩家打牌。');
                 return;
             }
             const p = this.state.players[this.mySeat];
@@ -425,13 +437,13 @@ class GameController {
             // 定缺牌優先ルール
             const hasQueTiles = p.hand.some(t => t.suit === p.que);
             if (hasQueTiles && tile.suit !== p.que) {
-                this.ui.log(`必须先打出缺门牌（缺${CONFIG.SUITS[p.que]}）`);
+                this.log(`必须先打出缺门牌（缺${CONFIG.SUITS[p.que]}）`);
                 return;
             }
 
             // 和了後の手牌固定（摸打固定）
             if (p.isHu && index !== p.hand.length - 1) {
-                this.ui.log('胡牌后只能打出摸到的最后一张牌。');
+                this.log('胡牌后只能打出摸到的最后一张牌。');
                 return;
             }
 
@@ -456,7 +468,7 @@ class GameController {
         this.state.lastDiscard = { tile, playerIndex };
 
         this.sound.play('discard');
-        this.ui.log(`${p.name} 打 ${this.engine.tileToString(tile)}`);
+        this.log(`${p.name} 打 ${this.engine.tileToString(tile)}`);
 
         this.engine.sortHand(p.hand, p.que);
         this.ui.hideActionBox();
@@ -626,7 +638,7 @@ class GameController {
             }
         }
         p.melds.push({ type: 'PUNG', tile, from: fromPlayer });
-        this.ui.log(`${p.name} 碰 ${this.engine.tileToString(tile)}`);
+        this.log(`${p.name} 碰 ${this.engine.tileToString(tile)}`);
 
         this.state.currentTurn = playerIndex;
         this.state.lastActionIsGang = false;
@@ -652,7 +664,7 @@ class GameController {
             }
         }
         p.melds.push({ type: 'GANG', tile, from: fromPlayer, isAnGang: false });
-        this.ui.log(`${p.name} 明杠 ${this.engine.tileToString(tile)}`);
+        this.log(`${p.name} 明杠 ${this.engine.tileToString(tile)}`);
         this.state.transferScore(fromPlayer, playerIndex, CONFIG.GANG_SCORE);
 
         this.state.lastActionIsGang = true;
@@ -677,12 +689,12 @@ class GameController {
                 meld.type = 'GANG';
                 meld.isAnGang = false;
             }
-            this.ui.log(`${p.name} 补杠 ${this.engine.tileToString(tile)}`);
+            this.log(`${p.name} 补杠 ${this.engine.tileToString(tile)}`);
         } else {
             // 暗槓
             p.hand = p.hand.filter(t => t.code !== tile.code);
             p.melds.push({ type: 'GANG', tile, from: playerIndex, isAnGang: true });
-            this.ui.log(`${p.name} 暗杠 ${this.engine.tileToString(tile)}`);
+            this.log(`${p.name} 暗杠 ${this.engine.tileToString(tile)}`);
         }
 
         for (let other = 0; other < CONFIG.TOTAL_PLAYERS; other++) {
@@ -703,7 +715,7 @@ class GameController {
         const fanInfo = this.engine.calculateFan(p, tile, isZiMo, fromPlayer, this.state);
         const score = CONFIG.BASE_SCORE * Math.pow(2, fanInfo.fan);
 
-        this.ui.log(`★ ${p.name} ${isZiMo ? '自摸' : '点炮'}胡: ${fanInfo.name} ${fanInfo.fan}番 ${score}分 ${this.engine.tileToString(tile)}`);
+        this.log(`★ ${p.name} ${isZiMo ? '自摸' : '点炮'}胡: ${fanInfo.name} ${fanInfo.fan}番 ${score}分 ${this.engine.tileToString(tile)}`);
         p.huRecords.push({ fan: fanInfo.fan, fanName: fanInfo.name, score, isZiMo });
 
         // 和了判定後は槓フラグをリセット
@@ -807,7 +819,7 @@ class GameController {
                 const penalty = CONFIG.HUA_ZHU_PENALTY;
                 this.state.transferScore(hzp.id, nhp.id, penalty);
                 const msg = `查花猪: ${hzp.name} 赔付 ${nhp.name} ${penalty}分`;
-                this.ui.log(msg);
+                this.log(msg);
                 penaltyLogs.push(msg);
             });
         });
@@ -833,7 +845,7 @@ class GameController {
                     const penalty = CONFIG.BASE_SCORE * Math.pow(2, maxFan);
                     this.state.transferScore(notingP.id, tingP.id, penalty);
                     const msg = `查大叫: ${notingP.name} 赔付 ${tingP.name} ${penalty}分 (${maxFan}番)`;
-                    this.ui.log(msg);
+                    this.log(msg);
                     penaltyLogs.push(msg);
                 });
             });
@@ -848,6 +860,7 @@ class GameController {
 
     handleRemoteStateSync(remoteState) {
         const savedSelectedIndices = this.state.selectedSwapIndices || [];
+        this.state.wall = null;
         Object.assign(this.state, remoteState);
 
         if (this.state.phase === CONFIG.PHASES.SWAP3) {
@@ -928,7 +941,7 @@ class GameController {
         } else if (action === 'SELECT_QUE') {
             if (this.state.players[playerIndex]) {
                 this.state.players[playerIndex].que = payload.que;
-                this.ui.log(`${this.state.players[playerIndex].name} 已选择缺${CONFIG.SUITS[payload.que]}`);
+                this.log(`${this.state.players[playerIndex].name} 已选择缺${CONFIG.SUITS[payload.que]}`);
                 this.ui.render(this.state, this.mySeat);
                 this.checkAndExecuteDingQue();
             }

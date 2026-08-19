@@ -28,8 +28,12 @@ class UIController {
     static render(state, mySeat = 0) {
         if (!this.wallNumEl) this.init();
 
-        const wallCount = (state.wall && Array.isArray(state.wall)) ? state.wall.length : (state.wallCount !== undefined ? state.wallCount : 0);
+        const wallCount = (state.wallCount !== undefined) ? state.wallCount : ((state.wall && Array.isArray(state.wall)) ? state.wall.length : 0);
         if (this.wallNumEl) this.wallNumEl.innerText = wallCount;
+
+        if (state.logs && Array.isArray(state.logs) && this.cmdLogEl) {
+            this.renderLogs(state.logs);
+        }
 
         const isQueAnnounced = (state.phase === CONFIG.PHASES.PLAYING || state.phase === CONFIG.PHASES.END);
 
@@ -243,6 +247,13 @@ class UIController {
         img.alt = MahjongEngine.tileToString(tile);
         img.draggable = false;
         return img;
+    }
+
+    static renderLogs(logs) {
+        if (!this.cmdLogEl) this.init();
+        if (!this.cmdLogEl || !logs) return;
+        this.cmdLogEl.innerHTML = logs.map(l => `<div>> ${l}</div>`).join('');
+        this.cmdLogEl.scrollTop = this.cmdLogEl.scrollHeight;
     }
 
     static log(text) {
