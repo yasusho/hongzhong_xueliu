@@ -97,15 +97,14 @@ class GameController {
 
     async handleCreateRoom() {
         try {
-            this.ui.log('正在连接网络并创建房间...');
+            this.ui.log('正在初始化房间...');
             const code = await this.p2p.createRoom();
             this.isOnline = true;
             this.showRoomBar(code, '房主');
-            this.ui.log(`房间创建成功，房间号: ${code}`);
+            this.ui.log(`房间就绪，房间号: ${code}`);
             window.location.hash = code;
         } catch (err) {
-            alert('创建房间失败: ' + (err.message || err));
-            this.ui.log('创建房间失败: ' + (err.message || err));
+            console.error('初始化房间失败:', err);
         }
     }
 
@@ -145,7 +144,10 @@ class GameController {
     }
 
     startOnlineMatch() {
-        if (!this.p2p || !this.p2p.isHost) return;
+        if (!this.p2p || !this.p2p.isHost) {
+            this.initGame(false);
+            return;
+        }
         this.initGame(true);
         this.syncStateToPeers();
     }
