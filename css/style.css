@@ -80,10 +80,11 @@ tr.turn-active {
 }
 
 .river-label {
-    width: 60px;
+    min-width: 85px;
     font-weight: bold;
     font-size: 13px;
     color: black;
+    white-space: nowrap;
 }
 
 .river-tiles {
