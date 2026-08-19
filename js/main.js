@@ -1049,16 +1049,25 @@ if (typeof window !== 'undefined') {
                 return;
             }
 
-            if (_state.phase !== CONFIG.PHASES.PLAYING || _state.currentTurn !== gameController.mySeat || p.hand.length % 3 !== 2) return;
-
-            if (e.key >= '1' && e.key <= '9') {
-                const idx = parseInt(e.key) - 1;
-                if (idx < p.hand.length) gameController.handleTileClick(idx);
-            } else if (e.code === 'Space') gameController.handleTileClick(p.hand.length - 1);
-            else {
+            // アクションボタン（胡・杠・碰・过）: 手番・手番外問わず cmd-box 表示中は常に有効
+            const cmdBox = UIController.$('cmd-box');
+            if (cmdBox && cmdBox.style.display !== 'none') {
                 const btnId = { H: 'btn-hu', G: 'btn-gang', P: 'btn-pung', X: 'btn-pass' }[e.key.toUpperCase()];
                 const btn = btnId && UIController.$(btnId);
-                if (btn && btn.style.display !== 'none') btn.click();
+                if (btn && btn.style.display !== 'none') {
+                    e.preventDefault();
+                    return btn.click();
+                }
+            }
+
+            // 自手番の打牌
+            if (_state.phase === CONFIG.PHASES.PLAYING && _state.currentTurn === gameController.mySeat && p.hand.length % 3 === 2) {
+                if (e.key >= '1' && e.key <= '9') {
+                    const idx = parseInt(e.key) - 1;
+                    if (idx < p.hand.length) gameController.handleTileClick(idx);
+                } else if (e.code === 'Space') {
+                    gameController.handleTileClick(p.hand.length - 1);
+                }
             }
         });
 
