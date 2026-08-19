@@ -91,12 +91,11 @@ class GameController {
 
     // --- P2P ルーム管理 ---
 
-    async handleCreateRoom() {
+    async handleCreateRoom(code = null) {
         try {
-            const code = await this.p2p.createRoom();
-            this.showRoomBar(code, '房主');
-            this.ui.log(`房间已建立，房间号: ${code}`);
-            window.location.hash = code;
+            const actualCode = await this.p2p.createRoom(code);
+            this.showRoomBar(actualCode, '房主');
+            window.location.hash = actualCode;
         } catch (err) {
             console.error('初始化房间失败:', err);
         }
@@ -993,7 +992,9 @@ if (typeof window !== 'undefined') {
         }
 
         // 初期状態で4桁の部屋コードを生成・常時表示
-        gameController.handleCreateRoom();
+        const el = document.getElementById('room-code-display');
+        const initialCode = el ? el.innerText.trim() : null;
+        gameController.handleCreateRoom(initialCode);
         gameController.initGame(false);
     });
 }

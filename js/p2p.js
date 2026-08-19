@@ -4,6 +4,7 @@
 class P2PManager {
     constructor() {
         this.reset();
+        this.roomCode = String(Math.floor(1000 + Math.random() * 9000));
         this.onStateReceived = null;
         this.onActionReceived = null;
         this.onRoomUpdate = null;
@@ -19,7 +20,7 @@ class P2PManager {
         this.isHost = false;
         this.connections = {};
         this.hostConn = null;
-        this.roomCode = null;
+        this.roomCode = this.roomCode || String(Math.floor(1000 + Math.random() * 9000));
         this.seatIndex = 0;
         this.playersInfo = [
             { id: 0, name: '1P', isAI: false, peerId: null },
@@ -38,7 +39,7 @@ class P2PManager {
                 try { this.peer.destroy(); } catch (e) {}
             }
 
-            const id = customId || ('hz' + Math.floor(100000 + Math.random() * 900000));
+            const id = customId || ('hz' + (this.roomCode || Math.floor(1000 + Math.random() * 9000)));
             try {
                 this.peer = new Peer(id, {
                     debug: 1,
@@ -66,8 +67,9 @@ class P2PManager {
                 if (!resolved) {
                     resolved = true;
                     if (err.type === 'unavailable-id') {
-                        const fallbackId = 'hz' + Math.floor(100000 + Math.random() * 900000);
-                        this.initPeer(fallbackId).then(resolve).catch(reject);
+                        const fallbackCode = String(Math.floor(1000 + Math.random() * 9000));
+                        this.roomCode = fallbackCode;
+                        this.initPeer('hz' + fallbackCode).then(resolve).catch(reject);
                     } else {
                         reject(err);
                     }
@@ -78,9 +80,9 @@ class P2PManager {
         });
     }
 
-    async createRoom() {
+    async createRoom(code = null) {
         this.reset();
-        const code4 = String(Math.floor(1000 + Math.random() * 9000));
+        const code4 = code || this.roomCode || String(Math.floor(1000 + Math.random() * 9000));
         this.roomCode = code4;
         this.isHost = true;
         this.seatIndex = 0;
