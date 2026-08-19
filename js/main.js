@@ -211,14 +211,15 @@ class GameController {
     }
 
     confirmUserSwap() {
-        if (this.state.selectedSwapIndices.length !== 3) return;
+        if (!this.state.selectedSwapIndices || this.state.selectedSwapIndices.length !== 3) return;
         this.sound.play('select');
 
         const userPlayer = this.state.players[this.mySeat];
         userPlayer.swapTiles = this.state.selectedSwapIndices.map(i => userPlayer.hand[i]);
+        const swapTileIds = userPlayer.swapTiles.map(t => t.id);
 
         if (this.isOnline && !this.p2p.isHost) {
-            this.p2p.sendAction('CONFIRM_SWAP', { swapTiles: userPlayer.swapTiles });
+            this.p2p.sendAction('CONFIRM_SWAP', { swapTiles: userPlayer.swapTiles, swapTileIds: swapTileIds });
             this.ui.hideInstruction();
             this.ui.log('已提交换牌，等待其他玩家...');
             return;
@@ -231,17 +232,24 @@ class GameController {
         const allReady = this.state.players.every(p => p.swapTiles && p.swapTiles.length === 3);
         if (!allReady) return;
 
-        // 交換実行（時計回りに受け渡し）
+        // 1. 各プレイヤーの手牌から選択された3枚を厳密に除去
         this.state.players.forEach(p => {
             p.swapTiles.forEach(t => {
-                const idx = p.hand.findIndex(x => x.id === t.id);
-                if (idx > -1) p.hand.splice(idx, 1);
+                let idx = p.hand.findIndex(x => (x.id !== undefined && t.id !== undefined && x.id === t.id));
+                if (idx === -1) {
+                    idx = p.hand.findIndex(x => x.suit === t.suit && x.num === t.num);
+                }
+                if (idx > -1) {
+                    p.hand.splice(idx, 1);
+                }
             });
         });
 
+        // 2. 時計回りに次のプレイヤーに3枚を渡す
+        const swappedGroups = this.state.players.map(p => [...p.swapTiles]);
         for (let p = 0; p < CONFIG.TOTAL_PLAYERS; p++) {
             const nextP = (p + 1) % CONFIG.TOTAL_PLAYERS;
-            this.state.players[nextP].hand.push(...this.state.players[p].swapTiles);
+            this.state.players[nextP].hand.push(...swappedGroups[p]);
         }
 
         this.ui.log('换三张完成。');
@@ -819,17 +827,22 @@ class GameController {
     // --- P2P同期・RPCハンドラ ---
 
     handleRemoteStateSync(remoteState) {
+        const savedSelectedIndices = this.state.selectedSwapIndices || [];
         Object.assign(this.state, remoteState);
-        this.ui.render(this.state, this.mySeat);
 
         if (this.state.phase === CONFIG.PHASES.SWAP3) {
+            this.state.selectedSwapIndices = savedSelectedIndices;
             const myP = this.state.players[this.mySeat];
             if (!myP || !myP.swapTiles || myP.swapTiles.length !== 3) {
+                const count = (this.state.selectedSwapIndices || []).length;
                 this.ui.showInstruction('换三张', '选3张牌', `
-                    <button id="btn-confirm-swap" disabled onclick="gameController.confirmUserSwap()">确定 (0/3)</button>
+                    <button id="btn-confirm-swap" ${count === 3 ? '' : 'disabled'} onclick="gameController.confirmUserSwap()">确定 (${count}/3)</button>
                 `);
+            } else {
+                this.ui.hideInstruction();
             }
         } else if (this.state.phase === CONFIG.PHASES.DINGQUE) {
+            this.state.selectedSwapIndices = [];
             const myP = this.state.players[this.mySeat];
             if (!myP || !myP.que) {
                 this.ui.showInstruction('定缺', '请选择定缺门类', `
@@ -837,6 +850,8 @@ class GameController {
                     <button onclick="gameController.selectUserQue('T')">缺筒</button>
                     <button onclick="gameController.selectUserQue('B')">缺条</button>
                 `);
+            } else {
+                this.ui.hideInstruction();
             }
         } else if (this.state.phase === CONFIG.PHASES.PLAYING) {
             this.ui.hideInstruction();
@@ -849,6 +864,8 @@ class GameController {
         } else if (this.state.phase === CONFIG.PHASES.END) {
             this.ui.showResultModal(this.state.players, []);
         }
+
+        this.ui.render(this.state, this.mySeat);
     }
 
     handleRemotePrompt(options) {
@@ -880,7 +897,12 @@ class GameController {
 
         if (action === 'CONFIRM_SWAP') {
             if (this.state.players[playerIndex]) {
-                this.state.players[playerIndex].swapTiles = payload.swapTiles;
+                const p = this.state.players[playerIndex];
+                if (payload.swapTileIds && Array.isArray(payload.swapTileIds)) {
+                    p.swapTiles = payload.swapTileIds.map(id => p.hand.find(x => x.id === id)).filter(Boolean);
+                } else if (payload.swapTiles) {
+                    p.swapTiles = payload.swapTiles;
+                }
                 this.checkAndExecuteSwap();
             }
         } else if (action === 'SELECT_QUE') {
