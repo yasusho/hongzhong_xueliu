@@ -122,10 +122,14 @@ class GameController {
         const bar = document.getElementById('room-bar');
         const codeEl = document.getElementById('room-code-display');
         const roleEl = document.getElementById('room-role-display');
+        const startBtn = document.getElementById('btn-start');
 
         if (bar) bar.style.display = 'flex';
         if (codeEl) codeEl.innerText = code;
         if (roleEl) roleEl.innerText = `(${role})`;
+        if (startBtn) {
+            startBtn.style.display = (role === '玩家') ? 'none' : 'inline-block';
+        }
     }
 
     handleStartGame() {

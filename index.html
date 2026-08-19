@@ -31,11 +31,14 @@
         (function() {
             var saved = null;
             try { saved = JSON.parse(sessionStorage.getItem('hz_session')); } catch(e) {}
+            var isClient = (saved && saved.role === 'client');
             var code = (saved && saved.roomCode) ? saved.roomCode : String(Math.floor(1000 + Math.random() * 9000));
             var el = document.getElementById('room-code-display');
             if (el) el.innerText = code;
             var roleEl = document.getElementById('room-role-display');
-            if (roleEl) roleEl.innerText = (saved && saved.role === 'client') ? '(玩家)' : '(房主)';
+            if (roleEl) roleEl.innerText = isClient ? '(玩家)' : '(房主)';
+            var startBtn = document.getElementById('btn-start');
+            if (startBtn && isClient) startBtn.style.display = 'none';
         })();
     </script>
 
