@@ -262,6 +262,31 @@ PinyinHelper.isPinyin = false;
 assert.strictEqual(PinyinHelper.t('红中血流成河麻将'), '红中血流成河麻将');
 console.log('✓ ピンイン翻訳ヘルパーテスト通過');
 
+console.log('\n--- 10. 効果音管理 (SoundManager) & 他家和了音テスト ---');
+const playedSounds = [];
+const soundTracker = {
+    play: type => playedSounds.push(type)
+};
+const ctrlSoundTest = new GameController(testState, soundTracker, dummyUI, MahjongEngine, MahjongAI, null, GameFlow, DeterministicPRNG);
+
+// 自身（0番座席 = mySeat）の和了時
+playedSounds.length = 0;
+ctrlSoundTest.doHu(0, { id: 301, suit: 'W', num: 1, code: '1W' }, true);
+assert.strictEqual(playedSounds[0], 'hu', 'Player 0 (self) win should play "hu" sound');
+
+// 他家（1番座席）の和了時
+playedSounds.length = 0;
+ctrlSoundTest.doHu(1, { id: 302, suit: 'W', num: 2, code: '2W' }, true);
+assert.strictEqual(playedSounds[0], 'hu_opp', 'Player 1 (opponent) win should play "hu_opp" sound');
+
+// 他家（2番座席）の和了時
+playedSounds.length = 0;
+ctrlSoundTest.doHu(2, { id: 303, suit: 'W', num: 3, code: '3W' }, true);
+assert.strictEqual(playedSounds[0], 'hu_opp', 'Player 2 (opponent) win should play "hu_opp" sound');
+
+console.log('✓ 自家/他家和了時の効果音鳴らし分けテスト通過');
+
 console.log('\n========================================');
 console.log('★ 全ての検証テストに正常に合格しました！');
 console.log('========================================');
+

@@ -62,9 +62,16 @@ class SoundManager {
                 this._tone('triangle', (f, t) => { f.setValueAtTime(523, t); }, 0.35, 0.08, 0);
                 this._tone('triangle', (f, t) => { f.setValueAtTime(880, t); }, 0.35, 0.12, 0.07);
             },
+            // 自分自身の和了（高揚感のあるファンファーレ調アルペジオ）
             hu: () => {
                 [523.25, 659.25, 783.99, 1046.5].forEach((freq, i) => {
                     this._tone('triangle', (f, t) => { f.setValueAtTime(freq, t); }, 0.4, 0.22, i * 0.09);
+                });
+            },
+            // 他家の和了（注意を促す下降チャイム）
+            hu_opp: () => {
+                [783.99, 659.25, 523.25].forEach((freq, i) => {
+                    this._tone('sawtooth', (f, t) => { f.setValueAtTime(freq, t); }, 0.28, 0.16, i * 0.08);
                 });
             }
         };
@@ -127,39 +134,43 @@ class UIController {
 
     static applyPinyinMode(isPinyin) {
         if (_Pinyin) _Pinyin.isPinyin = isPinyin;
-        const set = (id, zh, py) => {
+
+        const textElements = [
+            ['game-title', '红中血流成河麻将', 'Hóngzhōng Xuèliú Chénghé Mǎjiàng'],
+            ['btn-start', '开始对局', 'Kāishǐ Duìjú'],
+            ['btn-join', '加入房间', 'Jiārù Fángjiān'],
+            ['lbl-room-code', '房间号', 'Fángjiānhào'],
+            ['btn-change-room', '换号', 'Huànhào'],
+            ['btn-change-name', '改名', 'Gǎimíng'],
+            ['th-player', '玩家', 'Wánjiā'],
+            ['th-score', '积分', 'Jīfēn'],
+            ['th-state', '定缺/状态', 'Dìngquē / Zhuàngtài'],
+            ['th-melds', '副露', 'Fùlù'],
+            ['td-wall-lbl', '剩余牌山', 'Shèngyú Páishān'],
+            ['lbl-tiles-unit', '张', 'zhāng'],
+            ['legend-river', '弃牌区', 'Qìpái Qū'],
+            ['legend-log', '日志', 'Rìzhì'],
+            ['lbl-my-score', '积分', 'Jīfēn'],
+            ['lbl-ting', '听牌', 'Tīngpái'],
+            ['btn-pinyin', '汉↔A', 'A↔汉'],
+            ['lbl-result-title', '对局结算', 'Duìjú Jiésuàn'],
+            ['btn-reset-room', '新建房间 (重置)', 'Xīnjiàn Fángjiān (Chóngzhì)'],
+            ['auto-hu-msg', '已胡牌（自动摸打中）', 'Yǐ Hú (Zìdòng mō dǎ zhōng)']
+        ];
+        textElements.forEach(([id, zh, py]) => {
             const el = this.$(id);
             if (el) el.innerText = isPinyin ? py : zh;
-        };
+        });
 
-        set('game-title', '红中血流成河麻将', 'Hóngzhōng Xuèliú Chénghé Mǎjiàng');
-        set('btn-start', '开始对局', 'Kāishǐ Duìjú');
-        set('btn-join', '加入房间', 'Jiārù Fángjiān');
-        set('lbl-room-code', '房间号', 'Fángjiānhào');
-        set('btn-change-room', '换号', 'Huànhào');
-        set('btn-change-name', '改名', 'Gǎimíng');
-        set('th-player', '玩家', 'Wánjiā');
-        set('th-score', '积分', 'Jīfēn');
-        set('th-state', '定缺/状态', 'Dìngquē / Zhuàngtài');
-        set('th-melds', '副露', 'Fùlù');
-        set('td-wall-lbl', '剩余牌山', 'Shèngyú Páishān');
-        set('lbl-tiles-unit', '张', 'zhāng');
-        set('legend-river', '弃牌区', 'Qìpái Qū');
-        set('legend-log', '日志', 'Rìzhì');
-        set('lbl-my-score', '积分', 'Jīfēn');
-        set('lbl-ting', '听牌', 'Tīngpái');
-        set('btn-pinyin', '汉↔A', 'A↔汉');
-        set('lbl-result-title', '对局结算', 'Duìjú Jiésuàn');
-        set('btn-reset-room', '新建房间 (重置)', 'Xīnjiàn Fángjiān (Chóngzhì)');
-        set('auto-hu-msg', '已胡牌（自动摸打中）', 'Yǐ Hú (Zìdòng mō dǎ zhōng)');
-
-        const setTitle = (id, zh, py) => {
+        const titleElements = [
+            ['btn-change-room', '重新生成4位房间号', 'Chóngxīn shēngchéng 4 wèi fángjiānhào'],
+            ['btn-change-name', '修改你的显示昵称', 'Xiūgǎi nǐ de xiǎnshì nǐchēng'],
+            ['btn-pinyin', '切换拼音/汉字显示', 'Qiēhuàn pīnyīn/hànzì xiǎnshì']
+        ];
+        titleElements.forEach(([id, zh, py]) => {
             const el = this.$(id);
             if (el) el.title = isPinyin ? py : zh;
-        };
-        setTitle('btn-change-room', '重新生成4位房间号', 'Chóngxīn shēngchéng 4 wèi fángjiānhào');
-        setTitle('btn-change-name', '修改你的显示昵称', 'Xiūgǎi nǐ de xiǎnshì nǐchēng');
-        setTitle('btn-pinyin', '切换拼音/汉字显示', 'Qiēhuàn pīnyīn/hànzì xiǎnshì');
+        });
 
         const roleEl = this.$('room-role-display');
         if (roleEl) {
@@ -304,22 +315,19 @@ class UIController {
     };
 
     static showActionBox(showHu, showGang, showPung, onHu, onGang, onPung, onPass) {
-        const huTxt = pyT('胡') + ' (H)';
-        const gangTxt = pyT('杠') + ' (G)';
-        const pungTxt = pyT('碰') + ' (P)';
-        const passTxt = pyT('过') + ' (X)';
+        const actions = [
+            { id: 'btn-hu', show: showHu, fn: onHu, label: `${pyT('胡')} (H)` },
+            { id: 'btn-gang', show: showGang, fn: onGang, label: `${pyT('杠')} (G)` },
+            { id: 'btn-pung', show: showPung, fn: onPung, label: `${pyT('碰')} (P)` },
+            { id: 'btn-pass', show: true, fn: onPass, label: `${pyT('过')} (X)` }
+        ];
 
-        [
-            ['btn-hu', showHu, onHu, huTxt],
-            ['btn-gang', showGang, onGang, gangTxt],
-            ['btn-pung', showPung, onPung, pungTxt],
-            ['btn-pass', true, onPass, passTxt]
-        ].forEach(([id, show, handler, txt]) => {
+        actions.forEach(({ id, show, fn, label }) => {
             const btn = this.$(id);
             if (btn) {
                 btn.style.display = show ? 'inline-block' : 'none';
-                btn.onclick = handler;
-                btn.innerText = txt;
+                btn.onclick = fn;
+                btn.innerText = label;
             }
         });
         const box = this.$('cmd-box');
@@ -998,7 +1006,10 @@ class GameController {
     doHu(pIdx, tile, isZiMo, fromPlayer = null) {
         const CFG = this.config;
         if (this.p2p && !this.p2p.isHost) return this.p2p.sendAction('HU', { tile, isZiMo, fromPlayer });
-        this.sound.play('hu');
+
+        // 自身か他家かで効果音を鳴らし分け
+        this.sound.play(pIdx === this.mySeat ? 'hu' : 'hu_opp');
+
         const p = this.state.players[pIdx];
         if (!p) return;
         p.isHu = true;
@@ -1067,14 +1078,21 @@ class GameController {
         const CFG = this.config;
         const isNewGame = Boolean(remoteState.gameSeed && this.state.gameSeed !== remoteState.gameSeed);
 
-        // リモートの打牌・鳴き・和了の効果音同期
+        // リモートの打牌効果音
         if (remoteState.lastDiscard && (!this.state.lastDiscard || this.state.lastDiscard.tile?.id !== remoteState.lastDiscard.tile?.id)) {
             this.sound.play('discard');
         }
+
+        // リモートの和了効果音（自身 vs 他家）
+        const myHuRemote = remoteState.players?.[this.mySeat]?.huRecords?.length || 0;
+        const myHuLocal = this.state.players?.[this.mySeat]?.huRecords?.length || 0;
         const totalHuRemote = (remoteState.players || []).reduce((acc, p) => acc + (p.huRecords?.length || 0), 0);
         const totalHuLocal = (this.state.players || []).reduce((acc, p) => acc + (p.huRecords?.length || 0), 0);
-        if (totalHuRemote > totalHuLocal) {
+
+        if (myHuRemote > myHuLocal) {
             this.sound.play('hu');
+        } else if (totalHuRemote > totalHuLocal) {
+            this.sound.play('hu_opp');
         }
 
         if (isNewGame) {
