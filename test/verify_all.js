@@ -286,7 +286,90 @@ assert.strictEqual(playedSounds[0], 'hu_opp', 'Player 2 (opponent) win should pl
 
 console.log('✓ 自家/他家和了時の効果音鳴らし分けテスト通過');
 
+console.log('\n--- 11. P2P クライアント副露（ポン・カン）＆オフターン調停テスト ---');
+const p2pState = new GameState();
+p2pState.phase = CONFIG.PHASES.PLAYING;
+p2pState.currentTurn = 0; // ホスト（0番席）のターン
+
+// ホストの手牌とクライアント（1番席）の手牌を設定
+p2pState.players[0].hand = [
+    { id: 401, suit: 'W', num: 1, code: '1W' },
+    { id: 402, suit: 'W', num: 5, code: '5W' }
+];
+p2pState.players[1].hand = [
+    { id: 403, suit: 'W', num: 1, code: '1W' },
+    { id: 404, suit: 'W', num: 1, code: '1W' },
+    { id: 405, suit: 'T', num: 3, code: '3T' },
+    { id: 406, suit: 'T', num: 4, code: '4T' },
+    { id: 407, suit: 'T', num: 5, code: '5T' },
+    { id: 408, suit: 'T', num: 6, code: '6T' },
+    { id: 409, suit: 'T', num: 7, code: '7T' },
+    { id: 410, suit: 'T', num: 8, code: '8T' },
+    { id: 411, suit: 'T', num: 9, code: '9T' },
+    { id: 412, suit: 'B', num: 2, code: '2B' },
+    { id: 413, suit: 'B', num: 3, code: '3B' },
+    { id: 414, suit: 'B', num: 4, code: '4B' },
+    { id: 415, suit: 'B', num: 5, code: '5B' }
+];
+p2pState.players[1].que = 'B';
+
+// モックP2Pマネージャー（ホスト側）
+const sentPrompts = [];
+const mockHostP2P = {
+    isHost: true,
+    seatIndex: 0,
+    playersInfo: [
+        { id: 0, name: '1P (房主)', isAI: false, peerId: 'hz1234' },
+        { id: 1, name: '2P (玩家)', isAI: false, peerId: 'client-peer-1' },
+        { id: 2, name: '3P (电脑)', isAI: true, peerId: null },
+        { id: 3, name: '4P (电脑)', isAI: true, peerId: null }
+    ],
+    sendToSeat: (seat, msg) => {
+        sentPrompts.push({ seat, msg });
+        return true;
+    },
+    broadcastState: () => {},
+    broadcastRoomInfo: () => {}
+};
+
+const hostController = new GameController(p2pState, dummySound, dummyUI, MahjongEngine, MahjongAI, mockHostP2P, GameFlow, DeterministicPRNG);
+
+// ホストが 1W を打牌
+const discardedTile = { id: 401, suit: 'W', num: 1, code: '1W' };
+p2pState.players[0].discards.push(discardedTile);
+p2pState.lastDiscard = { tile: discardedTile, playerIndex: 0 };
+
+// checkOffTurnActions を実行
+hostController.checkOffTurnActions(discardedTile, 0);
+
+// クライアント（1番席）へ PROMPT_OFFTURN_ACTION が送信されたか検証
+assert.strictEqual(sentPrompts.length, 1, 'Prompt should be sent to client seat 1');
+assert.strictEqual(sentPrompts[0].seat, 1, 'Target seat should be 1');
+assert.strictEqual(sentPrompts[0].msg.options.canPung, true, 'Client should be prompted with canPung = true');
+
+// クライアント（1番席）から RESPONSE_OFFTURN (choice: PUNG) を受信したケースのテスト
+hostController.handleRemoteAction(1, 'RESPONSE_OFFTURN', {
+    choice: 'PUNG',
+    tile: discardedTile,
+    fromPlayer: 0
+});
+
+// 検証:
+// 1. クライアント(1番席)の手牌から 1W が2枚取り除かれていること
+assert.strictEqual(p2pState.players[1].hand.filter(t => t.code === '1W').length, 0, '1W should be removed from hand');
+assert.strictEqual(p2pState.players[1].hand.length, 11, 'Hand size should be 11 (13 - 2)');
+// 2. クライアント(1番席)の melds に PUNG が追加されていること
+assert.strictEqual(p2pState.players[1].melds.length, 1, 'Melds should contain 1 meld');
+assert.strictEqual(p2pState.players[1].melds[0].type, 'PUNG', 'Meld type should be PUNG');
+// 3. 現在の手番がクライアント（1番席）に移っていること
+assert.strictEqual(p2pState.currentTurn, 1, 'Current turn should be player 1');
+// 4. 捨て牌から鳴かれた 1W が取り除かれていること
+assert.strictEqual(p2pState.players[0].discards.length, 0, 'Discarded 1W should be removed from player 0 river');
+
+console.log('✓ P2P クライアント副露（ポン）＆オフターン調停テスト通過');
+
 console.log('\n========================================');
 console.log('★ 全ての検証テストに正常に合格しました！');
 console.log('========================================');
+
 

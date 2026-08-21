@@ -114,7 +114,8 @@ class UIController {
         const Engine = (typeof globalThis !== 'undefined' && globalThis.MahjongEngine) || (typeof MahjongEngine !== 'undefined' ? MahjongEngine : null);
         const svg = Engine ? Engine.tileToSvgPath(t) : '';
         const str = Engine ? Engine.tileToString(t) : '';
-        return `<img class="tile-img ${extra}".trim() src="${svg}" alt="${str}" draggable="false" />`;
+        const cls = `tile-img ${extra}`.trim();
+        return `<img class="${cls}" src="${svg}" alt="${str}" draggable="false" />`;
     }
 
     static getMeldsHtml(melds, size = 'normal') {
@@ -230,7 +231,13 @@ class UIController {
                 if (info) info.style.display = 'none';
             }
             const autoMsg = this.$('auto-hu-msg');
-            if (autoMsg) autoMsg.style.display = (myP.isHu || state.autoPlay) ? 'inline-block' : 'none';
+            if (autoMsg) {
+                const showAuto = (myP.isHu || state.autoPlay);
+                autoMsg.style.display = showAuto ? 'inline-block' : 'none';
+                if (showAuto) {
+                    autoMsg.innerText = myP.isHu ? pyT('已胡牌（自动摸打中）') : pyT('托管中');
+                }
+            }
         }
     }
 
@@ -426,7 +433,7 @@ class GameController {
     }
 
     get mySeat() {
-        return (!this.p2p?.isHost && this.p2p?.seatIndex != null) ? this.p2p.seatIndex : 0;
+        return (!this.p2p?.isHost && this.p2p?.seatIndex != null) ? Number(this.p2p.seatIndex) : 0;
     }
 
     getMyName() {
@@ -525,6 +532,7 @@ class GameController {
         UIController.hideResultModal();
         try { sessionStorage.removeItem('hz_session'); } catch (e) {}
         this.p2p.reset();
+        this.isOnline = false;
         const code = String(Math.floor(1000 + Math.random() * 9000));
         this.handleCreateRoom(code);
         this.initGame(false);
@@ -594,6 +602,7 @@ class GameController {
             this.state.selectedSwapIndices = [];
             this.showRoomBar(this.p2p.roomCode, '玩家');
             this.updateRoomMembersDisplay();
+            this.ui.render(this.state, this.mySeat);
             try {
                 sessionStorage.setItem('hz_session', JSON.stringify({ role: 'client', roomCode: this.p2p.roomCode, seatIndex: this.p2p.seatIndex }));
             } catch (e) {}
@@ -608,8 +617,14 @@ class GameController {
         set('room-bar', 'style', 'display: flex;');
         set('room-code-display', 'innerText', code);
         set('room-role-display', 'innerText', `(${pyT(role)})`);
+
+        const isClient = (role === '玩家' || (this.isOnline && !this.p2p?.isHost));
         const startBtn = UIController.$('btn-start');
-        if (startBtn) startBtn.style.display = role === '玩家' ? 'none' : 'inline-block';
+        if (startBtn) startBtn.style.display = isClient ? 'none' : 'inline-block';
+        const changeRoomBtn = UIController.$('btn-change-room');
+        if (changeRoomBtn) changeRoomBtn.style.display = isClient ? 'none' : 'inline-block';
+        const joinBtn = UIController.$('btn-join');
+        if (joinBtn) joinBtn.style.display = (this.isOnline || isClient) ? 'none' : 'inline-block';
     }
 
     handleStartGame() {
@@ -867,15 +882,15 @@ class GameController {
                     () => { this.ui.hideActionBox(); decisions[idx] = 'PASS'; this.resolveHu(cands, decisions, tile, discarder); }
                 );
             } else {
-                const sent = this.p2p.sendToSeat(idx, { type: 'PROMPT_OFFTURN_ACTION', options: { canHu: true, tile, fromPlayer: discarder } });
+                const sent = this.p2p.sendToSeat(idx, { type: 'PROMPT_OFFTURN_ACTION', options: { canHu: true, canGang: false, canPung: false, tile, fromPlayer: discarder } });
                 if (sent) {
                     pending++;
                     setTimeout(() => {
-                        if (this.pendingOffTurn?.decisions[idx] === undefined) {
-                            this.pendingOffTurn.decisions[idx] = 'PASS';
-                            this.resolveHu(this.pendingOffTurn.cands, this.pendingOffTurn.decisions, this.pendingOffTurn.tile, this.pendingOffTurn.discarder);
+                        if (this.pendingOffTurn?.decisions?.[idx] === undefined) {
+                            if (this.pendingOffTurn?.decisions) this.pendingOffTurn.decisions[idx] = 'PASS';
+                            this.resolveHu(cands, decisions, tile, discarder);
                         }
-                    }, 5000);
+                    }, 10000);
                 } else {
                     decisions[idx] = 'PASS';
                 }
@@ -928,12 +943,12 @@ class GameController {
                 if (sent) {
                     this.pendingOffTurn = { idx, tile, discarder, offset: i + 1 };
                     setTimeout(() => {
-                        if (this.pendingOffTurn?.idx === idx) {
+                        if (Number(this.pendingOffTurn?.idx) === idx) {
                             const info = this.pendingOffTurn;
                             this.pendingOffTurn = null;
                             this.arbitratePungGang(info.tile, info.discarder, info.offset);
                         }
-                    }, 5000);
+                    }, 10000);
                     return;
                 }
             }
@@ -953,6 +968,18 @@ class GameController {
             if (p.hand[i].code === tile.code && (++removed <= removeCount)) p.hand.splice(i, 1);
         }
         p.melds.push({ type, tile, from, isAnGang: false });
+
+        // 河（捨て牌）から鳴かれた牌を取り除く
+        const fromP = this.state.players[from];
+        if (fromP?.discards?.length > 0) {
+            let dIdx = -1;
+            for (let k = fromP.discards.length - 1; k >= 0; k--) {
+                if (fromP.discards[k].code === tile.code) { dIdx = k; break; }
+            }
+            if (dIdx > -1) fromP.discards.splice(dIdx, 1);
+        }
+        this.state.lastDiscard = null;
+
         this.log(`${p.name} ${type === 'GANG' ? '明杠' : '碰'} ${this.engine.tileToString(tile)}`);
         if (scoreTransfer > 0) this.state.transferScore(from, pIdx, scoreTransfer);
 
@@ -1185,20 +1212,21 @@ class GameController {
     handleRemoteAction(playerIndex, action, payload) {
         const CFG = this.config;
         if (!this.p2p?.isHost) return;
-        const p = this.state.players[playerIndex];
+        const pIdx = Number(playerIndex);
+        const p = this.state.players[pIdx];
         if (!p) return;
 
         const handlers = {
             SET_NAME: () => {
-                if (payload.name && this.p2p?.playersInfo?.[playerIndex]) {
+                if (payload.name && this.p2p?.playersInfo?.[pIdx]) {
                     const newName = String(payload.name).trim().slice(0, 8);
-                    this.p2p.playersInfo[playerIndex].name = newName;
+                    this.p2p.playersInfo[pIdx].name = newName;
                     p.name = newName;
                     this.p2p.broadcastRoomInfo();
                     this.syncStateToPeers();
                     this.updateRoomMembersDisplay();
                     this.ui.render(this.state, this.mySeat);
-                    this.log(`${playerIndex + 1}P 改名: ${newName}`);
+                    this.log(`${pIdx + 1}P 改名: ${newName}`);
                 }
             },
             CONFIRM_SWAP: () => {
@@ -1217,20 +1245,20 @@ class GameController {
                 this.ui.render(this.state, this.mySeat);
                 this.checkAndExecuteDingQue();
             },
-            DISCARD: () => this.executeDiscard(playerIndex, payload.handIndex, payload.tileId, payload.tileCode),
-            HU: () => this.doHu(playerIndex, payload.tile, payload.isZiMo, payload.fromPlayer),
-            GANG: () => this.doGang(playerIndex, payload.gangOption || { tile: payload.gangTile, type: 'AN_GANG' }),
-            GANG_DISCARD: () => this._executeMeld(playerIndex, 'GANG', payload.tile, payload.fromPlayer, 3, CFG.GANG_SCORE, true),
-            PUNG: () => this._executeMeld(playerIndex, 'PUNG', payload.tile, payload.fromPlayer, 2, 0, false),
+            DISCARD: () => this.executeDiscard(pIdx, payload.handIndex, payload.tileId, payload.tileCode),
+            HU: () => this.doHu(pIdx, payload.tile, payload.isZiMo, payload.fromPlayer),
+            GANG: () => this.doGang(pIdx, payload.gangOption || { tile: payload.gangTile, type: 'AN_GANG' }),
+            GANG_DISCARD: () => this._executeMeld(pIdx, 'GANG', payload.tile, payload.fromPlayer, 3, CFG.GANG_SCORE, true),
+            PUNG: () => this._executeMeld(pIdx, 'PUNG', payload.tile, payload.fromPlayer, 2, 0, false),
             RESPONSE_OFFTURN: () => {
                 if (this.pendingOffTurn?.decisions) {
-                    this.pendingOffTurn.decisions[playerIndex] = payload.choice;
+                    this.pendingOffTurn.decisions[pIdx] = payload.choice;
                     this.resolveHu(this.pendingOffTurn.cands, this.pendingOffTurn.decisions, this.pendingOffTurn.tile, this.pendingOffTurn.discarder);
-                } else if (this.pendingOffTurn?.idx === playerIndex) {
+                } else if (Number(this.pendingOffTurn?.idx) === pIdx) {
                     const info = this.pendingOffTurn;
                     this.pendingOffTurn = null;
-                    if (payload.choice === 'GANG') this._executeMeld(playerIndex, 'GANG', info.tile, info.discarder, 3, CFG.GANG_SCORE, true);
-                    else if (payload.choice === 'PUNG') this._executeMeld(playerIndex, 'PUNG', info.tile, info.discarder, 2, 0, false);
+                    if (payload.choice === 'GANG') this._executeMeld(pIdx, 'GANG', info.tile, info.discarder, 3, CFG.GANG_SCORE, true);
+                    else if (payload.choice === 'PUNG') this._executeMeld(pIdx, 'PUNG', info.tile, info.discarder, 2, 0, false);
                     else this.arbitratePungGang(info.tile, info.discarder, info.offset);
                 }
             }

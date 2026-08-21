@@ -75,7 +75,7 @@ class P2PManager {
     async createRoom(code = null, hostName = null) {
         this.reset();
         const code4 = code || this._gen();
-        Object.assign(this, { roomCode: code4, isHost: true });
+        Object.assign(this, { roomCode: code4, isHost: true, seatIndex: 0 });
         const name = hostName || '1P (房主)';
         this.playersInfo[0] = { id: 0, name, isAI: false, peerId: 'hz' + code4 };
         this._updateUI(code4, '(房主)');
@@ -135,11 +135,13 @@ class P2PManager {
         conn.on('data', data => {
             const handlers = {
                 JOIN_REQ: () => {
-                    const valid = (data.seatIndex > 0 && data.seatIndex < 4) ? this.playersInfo[data.seatIndex] : null;
+                    const reqSeat = Number(data.seatIndex);
+                    const valid = (reqSeat > 0 && reqSeat < 4) ? this.playersInfo[reqSeat] : null;
                     const seat = (valid && (valid.isAI || valid.peerId === conn.peer)) ? valid : this.playersInfo.find(p => p.id > 0 && p.isAI);
                     if (seat) {
                         const displayName = data.playerName || `${seat.id + 1}P`;
                         Object.assign(seat, { isAI: false, peerId: conn.peer, name: displayName });
+                        this.connections[conn.peer] = conn;
                         if (window.gameController?.state?.players?.[seat.id]) {
                             const p = window.gameController.state.players[seat.id];
                             p.name = displayName;
@@ -157,7 +159,7 @@ class P2PManager {
                     }
                 },
                 ACTION_REQUEST: () => {
-                    const pIdx = data.playerIndex >= 0 ? data.playerIndex : this.playersInfo.find(p => p.peerId === conn.peer)?.id;
+                    const pIdx = Number(data.playerIndex >= 0 ? data.playerIndex : this.playersInfo.find(p => p.peerId === conn.peer)?.id);
                     this.onActionReceived?.(pIdx, data.action, data.payload);
                 }
             };
@@ -185,7 +187,7 @@ class P2PManager {
         const handlers = {
             JOIN_RES: () => {
                 if (data.success) {
-                    this.seatIndex = data.seatIndex;
+                    this.seatIndex = Number(data.seatIndex);
                     this.playersInfo = data.playersInfo;
                     this.onRoomUpdate?.(this.playersInfo, this.seatIndex);
                     const successMsg = `已加入房间 (你是 ${this.seatIndex + 1}P)，等待开局...`;
@@ -248,8 +250,9 @@ class P2PManager {
     sendToSeat(seatIndex, data) {
         if (!this.isHost) return false;
         const target = this.playersInfo[seatIndex];
-        const conn = target?.peerId && this.connections[target.peerId];
-        if (conn?.open) {
+        if (!target || target.isAI) return false;
+        const conn = (target.peerId && this.connections[target.peerId]) || Object.values(this.connections).find(c => c?.peer === target.peerId);
+        if (conn) {
             try {
                 conn.send(data);
                 return true;
@@ -259,12 +262,14 @@ class P2PManager {
     }
 
     broadcast = data => Object.values(this.connections).forEach(c => {
-        if (c?.open) c.send(data);
+        try { c?.send(data); } catch (e) {}
     });
 
     sendAction(action, payload = {}) {
-        if (!this.isHost && this.hostConn?.open) {
-            this.hostConn.send({ type: 'ACTION_REQUEST', playerIndex: this.seatIndex, action, payload });
+        if (!this.isHost && this.hostConn) {
+            try {
+                this.hostConn.send({ type: 'ACTION_REQUEST', playerIndex: this.seatIndex, action, payload });
+            } catch (e) {}
         }
     }
 }
@@ -279,3 +284,4 @@ if (typeof globalThis !== 'undefined') {
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = { P2PManager, p2pManager };
 }
+
