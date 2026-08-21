@@ -2,7 +2,15 @@
  * 紅中血流成河麻雀 - UI描画・サウンド・ゲーム進行コントローラー (UIController, SoundManager, GameController)
  */
 
-// --- 1. ピンインモジュール参照 (PinyinHelper) ---
+// --- 1. 定数・ピンインモジュール参照 (CONFIG, PinyinHelper) ---
+const _CONFIG = (typeof CONFIG !== 'undefined') ? CONFIG : ((typeof require !== 'undefined') ? require('./engine.js').CONFIG : {
+    SUITS: { W: '万', T: '筒', B: '条', HZ: '中' },
+    PHASES: { INIT: 'INIT', SWAP3: 'SWAP3', DINGQUE: 'DINGQUE', PLAYING: 'PLAYING', END: 'END' },
+    BASE_SCORE: 100, INITIAL_SCORE: 5000, TOTAL_PLAYERS: 4, HAND_SIZE: 13, GANG_SCORE: 200, HUA_ZHU_PENALTY: 1600,
+    DELAYS: { AI_TURN: 100, AUTO_ACTION: 100 }
+});
+if (typeof CONFIG === 'undefined') { var CONFIG = _CONFIG; }
+
 const _PinyinHelper = (typeof PinyinHelper !== 'undefined') ? PinyinHelper : ((typeof require !== 'undefined') ? require('./pinyin.js').PinyinHelper : null);
 const _PINYIN_DICT = (typeof PINYIN_DICT !== 'undefined') ? PINYIN_DICT : ((typeof require !== 'undefined') ? require('./pinyin.js').PINYIN_DICT : null);
 
@@ -170,7 +178,7 @@ class UIController {
                 if (info) info.style.display = 'none';
             }
             const autoMsg = this.$('auto-hu-msg');
-            if (autoMsg) autoMsg.style.display = (myP.isHu && state.autoPlay) ? 'inline-block' : 'none';
+            if (autoMsg) autoMsg.style.display = (myP.isHu || state.autoPlay) ? 'inline-block' : 'none';
         }
     }
 
@@ -586,16 +594,23 @@ class GameController {
         const isMe = (this.state.currentTurn === this.mySeat);
         if (isMe) {
             this.ui.updateTingPanel(p);
-            this.checkPlayerTurnActions();
-            if (this.state.autoPlay) setTimeout(() => this.autoPlayPlayerTurn(this.mySeat), CONFIG.DELAYS.AI_TURN);
-        } else if (!this.isHumanPlayer(this.state.currentTurn)) {
+            if (this.state.autoPlay || p.isHu) {
+                this.ui.hideActionBox();
+                setTimeout(() => this.autoPlayPlayerTurn(this.mySeat), CONFIG.DELAYS.AI_TURN);
+            } else {
+                this.checkPlayerTurnActions();
+            }
+        } else if (!this.isHumanPlayer(this.state.currentTurn) || p.isHu) {
             setTimeout(() => this.autoPlayPlayerTurn(this.state.currentTurn), CONFIG.DELAYS.AI_TURN);
         }
     }
 
     checkPlayerTurnActions() {
         const p = this.state.players[this.mySeat];
-        if (!p || p.hand.length % 3 !== 2) return;
+        if (!p || p.hand.length % 3 !== 2 || this.state.autoPlay || p.isHu) {
+            this.ui.hideActionBox();
+            return;
+        }
         const drawn = p.hand[p.hand.length - 1], canHu = this.engine.checkCanHu(p, drawn), gangs = this.engine.checkCanGang(p);
         if (canHu || gangs.length > 0) {
             this.ui.showActionBox(canHu, gangs.length > 0, false,
@@ -676,7 +691,8 @@ class GameController {
         let pending = 0;
 
         cands.forEach(idx => {
-            if (!this.isHumanPlayer(idx) || (idx === this.mySeat && this.state.autoPlay)) decisions[idx] = 'HU';
+            const isAuto = !this.isHumanPlayer(idx) || (idx === this.mySeat && (this.state.autoPlay || this.state.players[idx]?.isHu));
+            if (isAuto) decisions[idx] = 'HU';
             else if (idx === this.mySeat) {
                 pending++;
                 this.ui.showActionBox(true, false, false,
@@ -774,8 +790,14 @@ class GameController {
         this.syncStateToPeers();
 
         if (isGang) this.processTurn(true);
-        else if (pIdx === this.mySeat) this.checkPlayerTurnActions();
-        else if (!this.isHumanPlayer(pIdx)) setTimeout(() => this.autoPlayPlayerTurn(pIdx), CONFIG.DELAYS.AI_TURN);
+        else if (pIdx === this.mySeat) {
+            if (this.state.autoPlay || p.isHu) {
+                setTimeout(() => this.autoPlayPlayerTurn(pIdx), CONFIG.DELAYS.AI_TURN);
+            } else {
+                this.checkPlayerTurnActions();
+            }
+        }
+        else if (!this.isHumanPlayer(pIdx) || p.isHu) setTimeout(() => this.autoPlayPlayerTurn(pIdx), CONFIG.DELAYS.AI_TURN);
     }
 
     doGang(pIdx, option) {
@@ -928,8 +950,13 @@ class GameController {
             [CONFIG.PHASES.PLAYING]: () => {
                 this.ui.hideInstruction();
                 if (this.state.currentTurn === this.mySeat) {
-                    this.checkPlayerTurnActions();
-                    if (this.state.autoPlay) setTimeout(() => this.autoPlayPlayerTurn(this.mySeat), CONFIG.DELAYS.AI_TURN);
+                    const myP = this.state.players[this.mySeat];
+                    if (this.state.autoPlay || myP?.isHu) {
+                        this.ui.hideActionBox();
+                        setTimeout(() => this.autoPlayPlayerTurn(this.mySeat), CONFIG.DELAYS.AI_TURN);
+                    } else {
+                        this.checkPlayerTurnActions();
+                    }
                 }
             },
             [CONFIG.PHASES.END]: () => {
@@ -942,6 +969,10 @@ class GameController {
     }
 
     handleRemotePrompt(opt) {
+        const myP = this.state.players[this.mySeat];
+        if (opt.canHu && (this.state.autoPlay || myP?.isHu)) {
+            return this.p2p.sendAction('RESPONSE_OFFTURN', { choice: 'HU', tile: opt.tile, fromPlayer: opt.fromPlayer });
+        }
         this.sound.play('action');
         this.ui.showActionBox(opt.canHu, opt.canGang, opt.canPung,
             () => { this.ui.hideActionBox(); this.p2p.sendAction('RESPONSE_OFFTURN', { choice: 'HU', tile: opt.tile, fromPlayer: opt.fromPlayer }); },

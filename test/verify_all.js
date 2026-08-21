@@ -92,7 +92,43 @@ const qiDuiPlayer = {
     melds: []
 };
 assert(MahjongEngine.checkCanHu(qiDuiPlayer), 'QiDui hand should win');
-console.log('✓ 和了判定テスト通過');
+
+// 高位牌順子テスト (8W 9W + 紅中 + 1T 1T)
+const highShuntsuPlayer = {
+    que: 'B',
+    hand: [
+        { suit: 'W', num: 8, code: '8W' }, { suit: 'W', num: 9, code: '9W' }, { suit: 'HZ', num: 0, code: 'HZ' },
+        { suit: 'T', num: 1, code: '1T' }, { suit: 'T', num: 1, code: '1T' }
+    ],
+    melds: []
+};
+assert(MahjongEngine.checkCanHu(highShuntsuPlayer), '8W 9W + HZ + pair should win');
+
+// カンチャン待ちテスト (7W 9W + 紅中 + 1T 1T)
+const kanchanPlayer = {
+    que: 'B',
+    hand: [
+        { suit: 'W', num: 7, code: '7W' }, { suit: 'W', num: 9, code: '9W' }, { suit: 'HZ', num: 0, code: 'HZ' },
+        { suit: 'T', num: 1, code: '1T' }, { suit: 'T', num: 1, code: '1T' }
+    ],
+    melds: []
+};
+assert(MahjongEngine.checkCanHu(kanchanPlayer), '7W 9W + HZ + pair should win');
+
+// 14枚複雑形テスト (123W 456W 89W(HZ) 999W 111T 99T)
+const complex14Player = {
+    que: 'B',
+    hand: [
+        { suit: 'W', num: 1 }, { suit: 'W', num: 2 }, { suit: 'W', num: 3 },
+        { suit: 'W', num: 4 }, { suit: 'W', num: 5 }, { suit: 'W', num: 6 },
+        { suit: 'W', num: 8 }, { suit: 'W', num: 9 }, { suit: 'HZ', num: 0 },
+        { suit: 'T', num: 1 }, { suit: 'T', num: 1 }, { suit: 'T', num: 1 },
+        { suit: 'T', num: 9 }, { suit: 'T', num: 9 }
+    ],
+    melds: []
+};
+assert(MahjongEngine.checkCanHu(complex14Player), 'Complex 14-tile hand with 8W 9W HZ should win');
+console.log('✓ 和了判定テスト通過 (平胡・七対子・紅中順子・カンチャン・高位牌)');
 
 console.log('\n--- 4. 番数計算 (calculateFan) テスト ---');
 const qingYiSePlayer = {
@@ -166,6 +202,57 @@ assert(vmRes.ok, 'DSL VM execution should succeed');
 assert.strictEqual(vmRes.value.nextState.players[0].score, 5500, 'Score should be modified to 5500');
 console.log('✓ 決定論的DSLインタプリタテスト通過');
 
+console.log('\n--- 8. 和了後自動摸打 (Auto Tsumogiri after Hu) テスト ---');
+const testState = new GameState();
+const dummySound = { play: () => {} };
+const dummyUI = {
+    render: () => {}, updateTingPanel: () => {}, showActionBox: () => {}, hideActionBox: () => {},
+    showInstruction: () => {}, hideInstruction: () => {}, showResultModal: () => {}, hideResultModal: () => {},
+    log: () => {}, clearLog: () => {}
+};
+const controller = new GameController(testState, dummySound, dummyUI, MahjongEngine, MahjongAI, null, GameFlow, DeterministicPRNG);
+
+// プレイヤー0を手動人間プレイヤーとして初期化
+testState.phase = CONFIG.PHASES.PLAYING;
+testState.currentTurn = 0;
+testState.players[0].hand = [
+    { id: 101, suit: 'W', num: 1, code: '1W' }, { id: 102, suit: 'W', num: 2, code: '2W' }, { id: 103, suit: 'W', num: 3, code: '3W' },
+    { id: 104, suit: 'W', num: 4, code: '4W' }, { id: 105, suit: 'W', num: 5, code: '5W' }, { id: 106, suit: 'W', num: 6, code: '6W' },
+    { id: 107, suit: 'W', num: 7, code: '7W' }, { id: 108, suit: 'W', num: 8, code: '8W' }, { id: 109, suit: 'W', num: 9, code: '9W' },
+    { id: 110, suit: 'T', num: 1, code: '1T' }, { id: 111, suit: 'T', num: 1, code: '1T' }, { id: 112, suit: 'T', num: 1, code: '1T' },
+    { id: 113, suit: 'T', num: 9, code: '9T' }, { id: 114, suit: 'T', num: 9, code: '9T' } // 14枚：和了形
+];
+testState.players[0].que = 'B';
+testState.autoPlay = false; // 托管はオフ
+
+// 1回目の和了（自摸）を実行
+controller.doHu(0, testState.players[0].hand[13], true);
+assert.strictEqual(testState.players[0].isHu, true, 'Player 0 should be isHu = true');
+assert.strictEqual(testState.players[0].huRecords.length, 1, 'Player 0 should have 1 huRecord');
+assert.strictEqual(testState.players[0].hand.length, 13, 'Hand size should be 13 after zimo discard');
+
+// 次の手番でツモ牌が来たとき（和了牌でない牌）
+testState.currentTurn = 0;
+const drawnTile = { id: 200, suit: 'T', num: 4, code: '4T' };
+testState.players[0].hand.push(drawnTile);
+
+// autoPlayPlayerTurn が呼ばれたときに自動ツモ切りされるかテスト
+controller.autoPlayPlayerTurn(0);
+assert.strictEqual(testState.players[0].hand.length, 13, 'Hand size should be 13 after auto tsumogiri');
+assert.strictEqual(testState.lastDiscard.tile.id, 200, 'Drawn tile (4T) should be automatically discarded');
+
+// 次の手番でツモ牌が和了牌（9T）だったとき
+testState.currentTurn = 0;
+const winningTile = { id: 201, suit: 'T', num: 9, code: '9T' };
+testState.players[0].hand.push(winningTile);
+
+// autoPlayPlayerTurn が自動で自摸和了し、かつツモ切りするかテスト
+controller.autoPlayPlayerTurn(0);
+assert.strictEqual(testState.players[0].huRecords.length, 2, 'Player 0 should have 2 huRecords (auto zimo)');
+assert.strictEqual(testState.players[0].hand.length, 13, 'Hand size should be 13 after auto zimo and discard');
+console.log('✓ 和了後自動摸打＆自動自摸テスト通過');
+
 console.log('\n========================================');
 console.log('★ 全ての検証テストに正常に合格しました！');
 console.log('========================================');
+

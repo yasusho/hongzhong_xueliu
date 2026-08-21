@@ -63,18 +63,43 @@ class MahjongEngine {
 
     static checkDuiDuiHu(counts, wilds) {
         const suits = ['W', 'T', 'B'];
+        // 1. 通常牌から雀頭を取るケース
         for (const s of suits) {
             for (let n = 1; n <= 9; n++) {
+                const headCnt = counts[s][n];
+                if (headCnt === 0) continue;
+
                 let need = 0;
+                if (headCnt >= 2) {
+                    const rem = headCnt - 2;
+                    need += (rem % 3 !== 0) ? (3 - (rem % 3)) : 0;
+                } else if (headCnt === 1) {
+                    need += 1;
+                }
+
                 for (const cs of suits) {
                     for (let cn = 1; cn <= 9; cn++) {
-                        const cnt = counts[cs][cn];
-                        need += (cs === s && cn === n) ? Math.max(0, 2 - cnt) : (cnt % 3 !== 0 ? (3 - (cnt % 3)) : 0);
+                        if (cs === s && cn === n) continue;
+                        const c = counts[cs][cn];
+                        if (c > 0) need += (c % 3 !== 0) ? (3 - (c % 3)) : 0;
                     }
                 }
                 if (need <= wilds && (wilds - need) % 3 === 0) return true;
             }
         }
+
+        // 2. 紅中2枚で雀頭を作るケース
+        if (wilds >= 2) {
+            let need = 0;
+            for (const cs of suits) {
+                for (let cn = 1; cn <= 9; cn++) {
+                    const c = counts[cs][cn];
+                    if (c > 0) need += (c % 3 !== 0) ? (3 - (c % 3)) : 0;
+                }
+            }
+            if (need <= (wilds - 2) && ((wilds - 2) - need) % 3 === 0) return true;
+        }
+
         return false;
     }
 
@@ -86,13 +111,24 @@ class MahjongEngine {
     }
 
     static checkStandardWin(counts, wilds) {
+        // 雀頭を通常牌から取るケース
         for (const s of ['W', 'T', 'B']) {
             for (let n = 1; n <= 9; n++) {
-                const c = counts[s][n];
-                if (c >= 2 && (counts[s][n] -= 2, this.canFormAllMelds(counts, wilds) ? ((counts[s][n] += 2), true) : ((counts[s][n] += 2), false))) return true;
-                if (c >= 1 && wilds >= 1 && (counts[s][n] -= 1, this.canFormAllMelds(counts, wilds - 1) ? ((counts[s][n] += 1), true) : ((counts[s][n] += 1), false))) return true;
+                if (counts[s][n] >= 2) {
+                    counts[s][n] -= 2;
+                    const can = this.canFormAllMelds(counts, wilds);
+                    counts[s][n] += 2;
+                    if (can) return true;
+                }
+                if (counts[s][n] >= 1 && wilds >= 1) {
+                    counts[s][n] -= 1;
+                    const can = this.canFormAllMelds(counts, wilds - 1);
+                    counts[s][n] += 1;
+                    if (can) return true;
+                }
             }
         }
+        // 雀頭を紅中2枚から取るケース
         return wilds >= 2 && this.canFormAllMelds(counts, wilds - 2);
     }
 
@@ -101,23 +137,54 @@ class MahjongEngine {
         return need <= wilds && (wilds - need) % 3 === 0;
     }
 
-    static minWildsForSuit(arr, idx = 1) {
+    static minWildsForSuit(arr, memo = new Map()) {
+        let idx = 1;
         while (idx <= 9 && !arr[idx]) idx++;
         if (idx > 9) return 0;
+
+        const key = arr.slice(1).join(',');
+        if (memo.has(key)) return memo.get(key);
+
         let res = 99;
+
+        // 1. 刻子を作る
         if (arr[idx] >= 3) {
-            arr[idx] -= 3; res = Math.min(res, this.minWildsForSuit(arr, idx)); arr[idx] += 3;
-        } else {
-            const orig = arr[idx]; arr[idx] = 0;
-            res = Math.min(res, (3 - orig) + this.minWildsForSuit(arr, idx + 1));
-            arr[idx] = orig;
+            arr[idx] -= 3;
+            res = Math.min(res, this.minWildsForSuit(arr, memo));
+            arr[idx] += 3;
         }
-        if (idx <= 7) {
-            const [w1, w2] = [arr[idx + 1] ? 0 : 1, arr[idx + 2] ? 0 : 1];
-            arr[idx]--; if (!w1) arr[idx + 1]--; if (!w2) arr[idx + 2]--;
-            res = Math.min(res, w1 + w2 + this.minWildsForSuit(arr, idx));
-            arr[idx]++; if (!w1) arr[idx + 1]++; if (!w2) arr[idx + 2]++;
+        if (arr[idx] >= 2) {
+            arr[idx] -= 2;
+            res = Math.min(res, 1 + this.minWildsForSuit(arr, memo));
+            arr[idx] += 2;
         }
+        if (arr[idx] >= 1) {
+            arr[idx] -= 1;
+            res = Math.min(res, 2 + this.minWildsForSuit(arr, memo));
+            arr[idx] += 1;
+        }
+
+        // 2. 順子を作る
+        // 2.1 [idx, idx+1, idx+2] (ワイルド0枚)
+        if (idx <= 7 && arr[idx] >= 1 && arr[idx + 1] >= 1 && arr[idx + 2] >= 1) {
+            arr[idx]--; arr[idx + 1]--; arr[idx + 2]--;
+            res = Math.min(res, this.minWildsForSuit(arr, memo));
+            arr[idx]++; arr[idx + 1]++; arr[idx + 2]++;
+        }
+        // 2.2 [idx, idx+1] (ワイルド1枚: idx<=7ならidx+2補填、idx=8なら7補填)
+        if (idx <= 8 && arr[idx] >= 1 && arr[idx + 1] >= 1) {
+            arr[idx]--; arr[idx + 1]--;
+            res = Math.min(res, 1 + this.minWildsForSuit(arr, memo));
+            arr[idx]++; arr[idx + 1]++;
+        }
+        // 2.3 [idx, idx+2] (ワイルド1枚: idx+1補填)
+        if (idx <= 7 && arr[idx] >= 1 && arr[idx + 2] >= 1) {
+            arr[idx]--; arr[idx + 2]--;
+            res = Math.min(res, 1 + this.minWildsForSuit(arr, memo));
+            arr[idx]++; arr[idx + 2]++;
+        }
+
+        memo.set(key, res);
         return res;
     }
 
