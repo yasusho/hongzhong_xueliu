@@ -183,6 +183,13 @@ class UIController {
         const autoBtn = this.$('btn-auto');
         if (autoBtn && (typeof globalThis !== 'undefined' && globalThis.gameState)) {
             autoBtn.innerText = isPinyin ? `Tuōguǎn: ${globalThis.gameState.autoPlay ? 'Kāi' : 'Guān'}` : `托管: ${globalThis.gameState.autoPlay ? '开' : '关'}`;
+            autoBtn.title = isPinyin ? 'Zìdòng tuōguǎn duìjú' : '自动托管对局';
+        }
+
+        const autoQueBtn = this.$('btn-auto-que');
+        if (autoQueBtn && (typeof globalThis !== 'undefined' && globalThis.gameState)) {
+            autoQueBtn.innerText = isPinyin ? `Zìdòng dǎquē: ${globalThis.gameState.autoQue ? 'Kāi' : 'Guān'}` : `自动打缺: ${globalThis.gameState.autoQue ? '开' : '关'}`;
+            autoQueBtn.title = isPinyin ? 'Zìdòng dǎ quēmén pái' : '自动打缺门牌';
         }
     }
 
@@ -232,10 +239,14 @@ class UIController {
             }
             const autoMsg = this.$('auto-hu-msg');
             if (autoMsg) {
-                const showAuto = (myP.isHu || state.autoPlay);
+                const hasQue = Boolean(myP.que && myP.hand.some(t => t.suit === myP.que));
+                const isAutoQueActive = state.autoQue && hasQue;
+                const showAuto = (myP.isHu || state.autoPlay || isAutoQueActive);
                 autoMsg.style.display = showAuto ? 'inline-block' : 'none';
                 if (showAuto) {
-                    autoMsg.innerText = myP.isHu ? pyT('已胡牌（自动摸打中）') : pyT('托管中');
+                    if (myP.isHu) autoMsg.innerText = pyT('已胡牌（自动摸打中）');
+                    else if (state.autoPlay) autoMsg.innerText = pyT('托管中');
+                    else if (isAutoQueActive) autoMsg.innerText = pyT('自动打缺中');
                 }
             }
         }
@@ -753,6 +764,9 @@ class GameController {
             if (this.state.autoPlay || p.isHu) {
                 this.ui.hideActionBox();
                 setTimeout(() => this.autoPlayPlayerTurn(this.mySeat), CFG.DELAYS.AI_TURN);
+            } else if (this.state.autoQue && p.que && p.hand.some(t => t.suit === p.que)) {
+                this.ui.hideActionBox();
+                setTimeout(() => this.autoPlayQueDiscard(this.mySeat), CFG.DELAYS.AI_TURN);
             } else {
                 this.checkPlayerTurnActions();
             }
@@ -994,6 +1008,8 @@ class GameController {
         } else if (pIdx === this.mySeat) {
             if (this.state.autoPlay || p.isHu) {
                 setTimeout(() => this.autoPlayPlayerTurn(pIdx), CFG.DELAYS.AI_TURN);
+            } else if (this.state.autoQue && p.que && p.hand.some(t => t.suit === p.que)) {
+                setTimeout(() => this.autoPlayQueDiscard(pIdx), CFG.DELAYS.AI_TURN);
             } else {
                 this.checkPlayerTurnActions();
             }
@@ -1090,6 +1106,25 @@ class GameController {
         this.executeDiscard(pIdx, this.ai.chooseDiscardIndex(p));
     }
 
+    autoPlayQueDiscard(pIdx) {
+        const CFG = this.config;
+        if (this.state.currentTurn !== pIdx || this.state.phase !== CFG.PHASES.PLAYING) return;
+        const p = this.state.players[pIdx];
+        if (!p || p.hand.length % 3 !== 2 || !p.que) return;
+
+        const queIndices = p.hand.map((t, idx) => ({ t, idx })).filter(x => x.t.suit === p.que);
+        if (queIndices.length === 0) return;
+
+        const discardIdx = this.ai.chooseDiscardIndex(p);
+        const targetIdx = (p.hand[discardIdx]?.suit === p.que) ? discardIdx : queIndices[0].idx;
+        const tile = p.hand[targetIdx];
+
+        if (this.p2p && !this.p2p.isHost) {
+            return this.p2p.sendAction('DISCARD', { handIndex: targetIdx, tileId: tile?.id, tileCode: tile?.code });
+        }
+        this.executeDiscard(pIdx, targetIdx);
+    }
+
     endGame() {
         const CFG = this.config;
         this.state.phase = CFG.PHASES.END;
@@ -1180,6 +1215,9 @@ class GameController {
                     if (this.state.autoPlay || myP?.isHu) {
                         this.ui.hideActionBox();
                         setTimeout(() => this.autoPlayPlayerTurn(this.mySeat), CFG.DELAYS.AI_TURN);
+                    } else if (this.state.autoQue && myP?.que && myP.hand.some(t => t.suit === myP.que)) {
+                        this.ui.hideActionBox();
+                        setTimeout(() => this.autoPlayQueDiscard(this.mySeat), CFG.DELAYS.AI_TURN);
                     } else {
                         this.checkPlayerTurnActions();
                     }
@@ -1302,8 +1340,34 @@ function setupBrowserEvents(ctrl, state) {
             const isPy = ctrl.pinyinMode;
             btnAuto.innerText = isPy ? `Tuōguǎn: ${state.autoPlay ? 'Kāi' : 'Guān'}` : `托管: ${state.autoPlay ? '开' : '关'}`;
             btnAuto.classList.toggle('active', state.autoPlay);
+            ctrl.ui.render(state, ctrl.mySeat);
             if (state.autoPlay && state.phase === CFG.PHASES.PLAYING && state.currentTurn === ctrl.mySeat) {
                 ctrl.autoPlayPlayerTurn(ctrl.mySeat);
+            }
+        };
+    }
+
+    // 自动打缺ボタン
+    const btnAutoQue = UIController.$('btn-auto-que');
+    if (btnAutoQue) {
+        let savedAutoQue = false;
+        try { savedAutoQue = localStorage.getItem('hz_auto_que') === 'true'; } catch (e) {}
+        state.autoQue = savedAutoQue;
+        btnAutoQue.classList.toggle('active', savedAutoQue);
+        btnAutoQue.innerText = ctrl.pinyinMode ? `Zìdòng dǎquē: ${savedAutoQue ? 'Kāi' : 'Guān'}` : `自动打缺: ${savedAutoQue ? '开' : '关'}`;
+
+        btnAutoQue.onclick = () => {
+            state.autoQue = !state.autoQue;
+            try { localStorage.setItem('hz_auto_que', state.autoQue); } catch (e) {}
+            const isPy = ctrl.pinyinMode;
+            btnAutoQue.innerText = isPy ? `Zìdòng dǎquē: ${state.autoQue ? 'Kāi' : 'Guān'}` : `自动打缺: ${state.autoQue ? '开' : '关'}`;
+            btnAutoQue.classList.toggle('active', state.autoQue);
+            ctrl.ui.render(state, ctrl.mySeat);
+            if (state.autoQue && state.phase === CFG.PHASES.PLAYING && state.currentTurn === ctrl.mySeat) {
+                const myP = state.players[ctrl.mySeat];
+                if (myP?.que && myP.hand.some(t => t.suit === myP.que)) {
+                    ctrl.autoPlayQueDiscard(ctrl.mySeat);
+                }
             }
         };
     }
@@ -1377,3 +1441,4 @@ if (typeof globalThis !== 'undefined') {
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = { SoundManager, soundManager, UIController, GameController, gameController, setupBrowserEvents };
 }
+

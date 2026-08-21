@@ -381,6 +381,7 @@ class GameState {
             startPlayer: 0,
             lastDiscard: null,
             autoPlay: false,
+            autoQue: false,
             selectedSwapIndices: [],
             lastActionIsGang: false,
             lastGangPlayer: null,

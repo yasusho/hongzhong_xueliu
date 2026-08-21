@@ -368,8 +368,54 @@ assert.strictEqual(p2pState.players[0].discards.length, 0, 'Discarded 1W should 
 
 console.log('✓ P2P クライアント副露（ポン）＆オフターン調停テスト通過');
 
+console.log('\n--- 12. 欠色自動切りモード (Auto-Discard Que) テスト ---');
+const autoQueState = new GameState();
+autoQueState.phase = CONFIG.PHASES.PLAYING;
+autoQueState.currentTurn = 0;
+autoQueState.autoQue = true;
+autoQueState.autoPlay = false;
+
+// プレイヤー0の手牌：缺門（'B'）の牌が2枚含まれる
+autoQueState.players[0].que = 'B';
+autoQueState.players[0].hand = [
+    { id: 501, suit: 'W', num: 1, code: '1W' },
+    { id: 502, suit: 'W', num: 2, code: '2W' },
+    { id: 503, suit: 'W', num: 3, code: '3W' },
+    { id: 504, suit: 'T', num: 4, code: '4T' },
+    { id: 505, suit: 'T', num: 5, code: '5T' },
+    { id: 506, suit: 'T', num: 6, code: '6T' },
+    { id: 507, suit: 'T', num: 7, code: '7T' },
+    { id: 508, suit: 'T', num: 8, code: '8T' },
+    { id: 509, suit: 'T', num: 9, code: '9T' },
+    { id: 510, suit: 'W', num: 9, code: '9W' },
+    { id: 511, suit: 'W', num: 9, code: '9W' },
+    { id: 512, suit: 'W', num: 9, code: '9W' },
+    { id: 513, suit: 'B', num: 1, code: '1B' }, // 缺門牌 1
+    { id: 514, suit: 'B', num: 9, code: '9B' }  // 缺門牌 2 (ツモ牌)
+];
+
+const autoQueCtrl = new GameController(autoQueState, dummySound, dummyUI, MahjongEngine, MahjongAI, null, GameFlow, DeterministicPRNG);
+
+// 1回目の自手番自動打缺テスト
+autoQueCtrl.autoPlayQueDiscard(0);
+assert.strictEqual(autoQueState.players[0].hand.length, 13, 'Hand size should be 13 after auto discard');
+assert.strictEqual(autoQueState.lastDiscard.tile.suit, 'B', 'Discarded tile must be Que suit (B)');
+assert.strictEqual(autoQueState.players[0].hand.filter(t => t.suit === 'B').length, 1, 'Only 1 Que tile should remain');
+
+// 2回目のツモ番（非缺門牌をツモったが手牌にまだ缺門牌 9B が残っているケース）
+autoQueState.currentTurn = 0;
+const drawnW = { id: 515, suit: 'W', num: 5, code: '5W' };
+autoQueState.players[0].hand.push(drawnW);
+autoQueCtrl.autoPlayQueDiscard(0);
+assert.strictEqual(autoQueState.players[0].hand.length, 13, 'Hand size should be 13 after second auto discard');
+assert.strictEqual(autoQueState.lastDiscard.tile.suit, 'B', 'Remaining Que tile should be automatically discarded');
+assert.strictEqual(autoQueState.players[0].hand.some(t => t.suit === 'B'), false, 'No Que tiles should remain in hand');
+
+console.log('✓ 欠色自動切りモードテスト通過');
+
 console.log('\n========================================');
 console.log('★ 全ての検証テストに正常に合格しました！');
 console.log('========================================');
+
 
 
