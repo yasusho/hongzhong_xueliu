@@ -38,7 +38,7 @@ class P2PManager {
                 if (this.peer && !this.peer.destroyed) this.peer.destroy();
             } catch (e) {}
 
-            const id = customId || ('hz' + (this.roomCode || this._gen()));
+            const id = customId || ('hz_c_' + Math.random().toString(36).slice(2, 9));
             const iceConfig = {
                 iceServers: [
                     { urls: 'stun:stun.l.google.com:19302' },
@@ -60,10 +60,12 @@ class P2PManager {
             });
 
             this.peer.once('error', err => {
-                if (err.type === 'unavailable-id') {
-                    const code = this._gen();
-                    this.roomCode = code;
-                    return this.initPeer('hz' + code).then(resolve).catch(reject);
+                if (err.type === 'unavailable-id' && this.isHost) {
+                    const newCode = this._gen();
+                    this.roomCode = newCode;
+                    if (this.playersInfo?.[0]) this.playersInfo[0].peerId = 'hz' + newCode;
+                    this._updateUI(newCode, '(房主)');
+                    return this.initPeer('hz' + newCode).then(resolve).catch(reject);
                 }
                 reject(err);
             });
@@ -83,7 +85,7 @@ class P2PManager {
         try {
             const actualId = await this.initPeer('hz' + code4);
             this.roomCode = actualId.replace(/^hz/, '');
-            this._updateUI(this.roomCode);
+            this._updateUI(this.roomCode, '(房主)');
             return this.roomCode;
         } catch (e) {
             return code4;
@@ -93,7 +95,8 @@ class P2PManager {
     async joinRoom(targetCode, savedSeat = null, playerName = null) {
         this.reset();
         const code = String(targetCode).trim().replace(/^hz/, '');
-        await this.initPeer();
+        const clientPeerId = 'hz_c_' + Math.random().toString(36).slice(2, 9);
+        await this.initPeer(clientPeerId);
         Object.assign(this, { isHost: false, roomCode: code });
 
         return new Promise((resolve, reject) => {
@@ -111,12 +114,18 @@ class P2PManager {
             });
             conn.on('data', data => this._handleHostMsg(data));
             conn.on('close', () => {
-                const disconnectMsg = '与房主的连接已断开。';
-                if (window.gameController) window.gameController.log(disconnectMsg);
-                else window.UIController?.log(disconnectMsg);
+                try { if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem('hz_session'); } catch (e) {}
+                this._log('与房主的连接已断开。');
             });
             conn.once('error', err => { clearTimeout(timeout); reject(err); });
         });
+    }
+
+    _log(msg) {
+        if (typeof window !== 'undefined') {
+            if (window.gameController) window.gameController.log(msg);
+            else window.UIController?.log(msg);
+        }
     }
 
     _updateUI(code, role = null) {
@@ -150,9 +159,7 @@ class P2PManager {
                         }
                         conn.send({ type: 'JOIN_RES', success: true, seatIndex: seat.id, playersInfo: this.playersInfo });
                         this.broadcastRoomInfo();
-                        const joinMsg = `${seat.id + 1}P 进入房间`;
-                        if (window.gameController) window.gameController.log(joinMsg);
-                        else window.UIController?.log(joinMsg);
+                        this._log(`${seat.id + 1}P 进入房间`);
                         if (window.gameController?.state) this.broadcastState(window.gameController.state);
                     } else {
                         conn.send({ type: 'JOIN_RES', success: false, message: '房间已满员' });
@@ -172,14 +179,16 @@ class P2PManager {
                 const p = !Object.values(this.connections).some(c => c?.peer === conn.peer) && this.playersInfo.find(x => x.peerId === conn.peer);
                 if (p) {
                     Object.assign(p, { isAI: true, peerId: null, name: `${p.id + 1}P` });
-                    if (window.gameController?.state?.players?.[p.id]) window.gameController.state.players[p.id].name = `${p.id + 1}P (电脑)`;
+                    if (window.gameController?.handlePlayerDisconnect) {
+                        window.gameController.handlePlayerDisconnect(p.id);
+                    } else if (window.gameController?.state?.players?.[p.id]) {
+                        window.gameController.state.players[p.id].name = `${p.id + 1}P (电脑)`;
+                    }
                     this.broadcastRoomInfo();
-                    const leaveMsg = `${p.id + 1}P 离线 (电脑托管)`;
-                    if (window.gameController) window.gameController.log(leaveMsg);
-                    else window.UIController?.log(leaveMsg);
+                    this._log(`${p.id + 1}P 离线 (电脑托管)`);
                     if (window.gameController?.state) this.broadcastState(window.gameController.state);
                 }
-            }, 3000);
+            }, 1000);
         });
     }
 
@@ -190,9 +199,7 @@ class P2PManager {
                     this.seatIndex = Number(data.seatIndex);
                     this.playersInfo = data.playersInfo;
                     this.onRoomUpdate?.(this.playersInfo, this.seatIndex);
-                    const successMsg = `已加入房间 (你是 ${this.seatIndex + 1}P)，等待开局...`;
-                    if (window.gameController) window.gameController.log(successMsg);
-                    else window.UIController?.log(successMsg);
+                    this._log(`已加入房间 (你是 ${this.seatIndex + 1}P)，等待开局...`);
                     this._joinResolve?.();
                 } else {
                     const msg = data.message || '加入失败';
@@ -217,7 +224,7 @@ class P2PManager {
     }
 
     broadcastState(state) {
-        if (!this.isHost) return;
+        if (!this.isHost || !state) return;
         this.broadcast({
             type: 'SYNC_STATE',
             state: {
@@ -226,22 +233,23 @@ class P2PManager {
                 currentTurn: state.currentTurn,
                 startPlayer: state.startPlayer,
                 wallCount: state.remainingWall,
-                lastDiscard: state.lastDiscard,
+                lastDiscard: state.lastDiscard ? { ...state.lastDiscard, tile: { ...state.lastDiscard.tile } } : null,
                 lastActionIsGang: state.lastActionIsGang,
                 lastGangPlayer: state.lastGangPlayer,
                 logs: state.logs || [],
                 settlementLogs: state.settlementLogs || [],
-                players: state.players.map(p => ({
+                players: (state.players || []).map(p => ({
                     id: p.id,
                     name: p.name,
                     score: p.score,
                     que: p.que,
                     isHu: p.isHu,
-                    huRecords: p.huRecords,
-                    melds: p.melds,
-                    discards: p.discards,
+                    isEliminated: Boolean(p.isEliminated),
+                    huRecords: p.huRecords ? JSON.parse(JSON.stringify(p.huRecords)) : [],
+                    melds: p.melds ? JSON.parse(JSON.stringify(p.melds)) : [],
+                    discards: p.discards ? JSON.parse(JSON.stringify(p.discards)) : [],
                     handCount: p.hand?.length || 0,
-                    hand: p.hand
+                    hand: p.hand ? JSON.parse(JSON.stringify(p.hand)) : []
                 }))
             }
         });
@@ -275,13 +283,4 @@ class P2PManager {
 }
 
 const p2pManager = new P2PManager();
-
-// Universal Global / Module Export
-if (typeof globalThis !== 'undefined') {
-    globalThis.P2PManager = P2PManager;
-    globalThis.p2pManager = p2pManager;
-}
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { P2PManager, p2pManager };
-}
 

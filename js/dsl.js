@@ -178,12 +178,4 @@ class TriggerResolutionEngine {
     }
 }
 
-// Universal Global / Module Export
-if (typeof globalThis !== 'undefined') {
-    globalThis.DeterministicPRNG = DeterministicPRNG;
-    globalThis.DeterministicVM = DeterministicVM;
-    globalThis.TriggerResolutionEngine = TriggerResolutionEngine;
-}
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { DeterministicPRNG, DeterministicVM, TriggerResolutionEngine };
-}
+

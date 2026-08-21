@@ -2,7 +2,7 @@
  * 紅中血流成河麻雀 - コア麻雀エンジン & ゲーム進行 (MahjongEngine, GameFlow, GameState, MahjongAI, CONFIG)
  */
 
-var CONFIG = (typeof globalThis !== 'undefined' && globalThis.CONFIG) || {
+const CONFIG = {
     SUITS: { W: '万', T: '筒', B: '条', HZ: '中' },
     PHASES: { INIT: 'INIT', SWAP3: 'SWAP3', DINGQUE: 'DINGQUE', PLAYING: 'PLAYING', END: 'END' },
     BASE_SCORE: 100,
@@ -11,7 +11,7 @@ var CONFIG = (typeof globalThis !== 'undefined' && globalThis.CONFIG) || {
     HAND_SIZE: 13,
     GANG_SCORE: 200,
     HUA_ZHU_PENALTY: 1600,
-    DELAYS: { AI_TURN: 100, AUTO_ACTION: 100 }
+    DELAYS: { AI_TURN: 700, AUTO_ACTION: 500 }
 };
 
 const SUIT_PREFIX = { W: 'wan', T: 'tong', B: 'tiao' };
@@ -395,6 +395,7 @@ class GameState {
                 que: null,
                 score: CONFIG.INITIAL_SCORE,
                 isHu: false,
+                isEliminated: false,
                 huRecords: [],
                 swapTiles: []
             }))
@@ -406,10 +407,19 @@ class GameState {
     }
 
     transferScore(from, to, amount) {
-        if (this.players[from] && this.players[to]) {
-            this.players[from].score -= amount;
-            this.players[to].score += amount;
+        const fromP = this.players[from];
+        const toP = this.players[to];
+        if (fromP && toP) {
+            if (fromP.isEliminated && fromP.score <= 0) return 0; // 既に脱落しているプレイヤーからは徴収しない
+            const actualAmount = Math.min(amount, Math.max(0, fromP.score));
+            fromP.score -= amount;
+            toP.score += amount;
+            if (fromP.score <= 0) {
+                fromP.isEliminated = true;
+            }
+            return actualAmount;
         }
+        return 0;
     }
 
     sortAllHands() {
@@ -417,25 +427,11 @@ class GameState {
     }
 
     isGameOver() {
-        return this.remainingWall === 0 || this.players.some(p => p.score <= 0);
+        if (this.remainingWall === 0) return true;
+        const activePlayers = this.players.filter(p => !p.isEliminated && p.score > 0);
+        return activePlayers.length <= 1;
     }
 }
 
 const gameState = new GameState();
-
-// Universal Global / Module Export
-if (typeof globalThis !== 'undefined') {
-    globalThis.CONFIG = CONFIG;
-    globalThis.SUIT_PREFIX = SUIT_PREFIX;
-    globalThis.SUIT_ORDER = SUIT_ORDER;
-    globalThis.MahjongEngine = MahjongEngine;
-    globalThis.MahjongAI = MahjongAI;
-    globalThis.GameFlow = GameFlow;
-    globalThis.GameState = GameState;
-    globalThis.gameState = gameState;
-}
-
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { CONFIG, SUIT_PREFIX, SUIT_ORDER, MahjongEngine, MahjongAI, GameFlow, GameState, gameState };
-}
 

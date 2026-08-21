@@ -3,6 +3,7 @@ body { max-width: 800px; margin: 10px auto; padding: 0 8px; font-family: sans-se
 .game-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
 .game-title { margin: 0; font-size: 1.2rem; }
 .header-actions { display: flex; gap: 4px; }
+#btn-pinyin.active { background-color: #28a745; color: white; font-weight: bold; }
 
 /* ルーム情報バー */
 .room-bar { display: flex; justify-content: space-between; align-items: center; padding: 4px 8px; border: 1px solid black; margin-bottom: 8px; font-size: 13px; background-color: whitesmoke; }
@@ -33,6 +34,8 @@ tr.turn-active { background-color: lightcyan; }
 .btn-auto-toggle.active { background-color: #28a745; color: white; border: 1px solid #1e7e34; font-weight: bold; }
 .ting-panel { display: inline-flex; align-items: center; gap: 4px; padding: 2px 4px; border: 1px solid green; background-color: white; }
 .instruction-box { background-color: yellow; border: 1px solid black; padding: 4px 8px; margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
+.btn-que-choice { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; cursor: pointer; font-size: 13px; font-weight: bold; }
+.btn-que-choice img { vertical-align: middle; }
 .my-hand-wrapper { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 8px; }
 .tile-group { display: inline-flex; align-items: center; flex-wrap: wrap; }
 
@@ -47,6 +50,8 @@ tr.turn-active { background-color: lightcyan; }
 .meld-group { display: inline-flex; align-items: center; border: 1px solid gray; background-color: white; margin-left: 6px; padding: 1px 3px; vertical-align: middle; }
 .tag-que { color: red; font-weight: bold; }
 .tag-hu { color: blue; font-weight: bold; }
+.tag-eliminated { color: #721c24; font-weight: bold; background-color: #f8d7da; padding: 1px 4px; border: 1px solid #f5c6cb; border-radius: 3px; font-size: 11px; }
+tr.player-eliminated { opacity: 0.6; background-color: #fdf2f2 !important; }
 .action-box { margin-top: 6px; display: inline-flex; gap: 6px; }
 .sys-log { height: 65px; overflow-y: scroll; font-size: 12px; background-color: white; color: black; }
 

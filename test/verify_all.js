@@ -2,23 +2,41 @@
  * 紅中血流成河麻雀 - 自動リグレッション・ユニット検証スクリプト
  */
 const assert = require('assert');
+global.assert = assert;
+const fs = require('fs');
+const path = require('path');
+const vm = require('vm');
 
-// 1. 統合モジュールのロード
-const { CONFIG, MahjongEngine, MahjongAI, GameFlow, GameState } = require('../js/engine.js');
-const { SoundManager, UIController, GameController } = require('../js/main.js');
-const { P2PManager } = require('../js/p2p.js');
-const { DeterministicPRNG, DeterministicVM, TriggerResolutionEngine } = require('../js/dsl.js');
-const { PinyinHelper, PINYIN_DICT } = require('../js/pinyin.js');
+// ブラウザ環境モック
+global.window = {
+    addEventListener: () => {},
+    AudioContext: class {
+        createGain() { return { gain: { value: 1, setValueAtTime: () => {}, linearRampToValueAtTime: () => {}, exponentialRampToValueAtTime: () => {} }, connect: () => {} }; }
+        createOscillator() { return { type: 'sine', frequency: { setValueAtTime: () => {}, exponentialRampToValueAtTime: () => {} }, connect: () => {}, start: () => {}, stop: () => {} }; }
+    }
+};
+global.document = {
+    getElementById: id => ({ innerText: '', innerHTML: '', style: {}, classList: { toggle: () => {}, add: () => {}, remove: () => {} } }),
+    querySelector: () => null
+};
+global.sessionStorage = { getItem: () => null, setItem: () => {}, removeItem: () => {} };
+global.localStorage = { getItem: () => null, setItem: () => {}, removeItem: () => {} };
+
+// ブラウザの読み込み順序に従ってスクリプトをグローバルスコープにロード
+['dsl.js', 'i18n.js', 'engine.js', 'p2p.js', 'sound.js', 'ui.js', 'game.js', 'main.js'].forEach(file => {
+    const code = fs.readFileSync(path.join(__dirname, '../js', file), 'utf8');
+    vm.runInThisContext(code, { filename: file });
+});
 
 console.log('--- 1. モジュール読み込みテスト ---');
-assert(CONFIG && CONFIG.TOTAL_PLAYERS === 4, 'CONFIG loaded correctly');
-assert(MahjongEngine, 'MahjongEngine loaded');
-assert(MahjongAI, 'MahjongAI loaded');
-assert(DeterministicVM, 'DeterministicVM loaded');
-assert(SoundManager, 'SoundManager loaded');
-assert(P2PManager, 'P2PManager loaded');
-assert(GameFlow, 'GameFlow loaded');
-assert(PinyinHelper && PINYIN_DICT, 'PinyinHelper and PINYIN_DICT loaded');
+assert(typeof CONFIG !== 'undefined' && CONFIG.TOTAL_PLAYERS === 4, 'CONFIG loaded correctly');
+assert(typeof MahjongEngine !== 'undefined', 'MahjongEngine loaded');
+assert(typeof MahjongAI !== 'undefined', 'MahjongAI loaded');
+assert(typeof DeterministicVM !== 'undefined', 'DeterministicVM loaded');
+assert(typeof SoundManager !== 'undefined', 'SoundManager loaded');
+assert(typeof P2PManager !== 'undefined', 'P2PManager loaded');
+assert(typeof GameFlow !== 'undefined', 'GameFlow loaded');
+assert(typeof PinyinHelper !== 'undefined' && typeof PINYIN_DICT !== 'undefined', 'PinyinHelper and PINYIN_DICT loaded');
 console.log('✓ 全モジュールの読み込みに成功');
 
 console.log('\n--- 2. 麻雀エンジン（牌生成・ソート・文字列表現）テスト ---');
@@ -252,15 +270,33 @@ assert.strictEqual(testState.players[0].huRecords.length, 2, 'Player 0 should ha
 assert.strictEqual(testState.players[0].hand.length, 13, 'Hand size should be 13 after auto zimo and discard');
 console.log('✓ 和了後自動摸打＆自動自摸テスト通過');
 
-console.log('\n--- 9. ピンイン翻訳ヘルパー (PinyinHelper) テスト ---');
-PinyinHelper.isPinyin = true;
-assert.strictEqual(PinyinHelper.t('红中血流成河麻将'), 'Hóngzhōng Xuèliú Chénghé Mǎjiàng');
-assert.strictEqual(PinyinHelper.t('1万'), '1 Wàn');
-assert.strictEqual(PinyinHelper.t('4番'), '4 fān');
-assert.strictEqual(PinyinHelper.t('100分'), '100 fēn');
-PinyinHelper.isPinyin = false;
-assert.strictEqual(PinyinHelper.t('红中血流成河麻将'), '红中血流成河麻将');
-console.log('✓ ピンイン翻訳ヘルパーテスト通過');
+console.log('\n--- 9. 多言語 (I18nHelper) ＆ ピンイン表記 (汉↔A) テスト ---');
+I18nHelper.lang = 'JA';
+I18nHelper.isPinyin = false;
+assert.strictEqual(I18nHelper.t('红中血流成河麻将'), '红中血流成河麻雀', '日本語モード時は日本語で翻訳されること');
+
+// 表記切替 (ピンインON)
+I18nHelper.togglePinyin();
+assert.strictEqual(I18nHelper.isPinyin, true);
+assert.strictEqual(I18nHelper.t('红中血流成河麻将'), 'Hóngzhōng Xuèliú Chénghé Mǎjiàng', 'ピンインON時は言語設定に関わらずピンインになること');
+assert.strictEqual(I18nHelper.t('1万'), '1 Wàn');
+assert.strictEqual(I18nHelper.t('4番'), '4 fān');
+assert.strictEqual(I18nHelper.t('100分'), '100 fēn');
+
+// ピンインOFFに戻す
+I18nHelper.togglePinyin();
+assert.strictEqual(I18nHelper.isPinyin, false);
+
+// 言語切替 (中国語モード)
+I18nHelper.toggleLanguage();
+assert.strictEqual(I18nHelper.lang, 'ZH');
+assert.strictEqual(I18nHelper.t('红中血流成河麻将'), '红中血流成河麻将', '中国語モード時は原文のまま表示されること');
+
+// 再び日本語モードに戻す
+I18nHelper.toggleLanguage();
+assert.strictEqual(I18nHelper.lang, 'JA');
+assert.strictEqual(I18nHelper.t('红中血流成河麻将'), '红中血流成河麻雀');
+console.log('✓ 独立した言語切替 (日/中) ＆ 表記切替 (汉↔A) テスト通過');
 
 console.log('\n--- 10. 効果音管理 (SoundManager) & 他家和了音テスト ---');
 const playedSounds = [];
@@ -412,6 +448,116 @@ assert.strictEqual(autoQueState.lastDiscard.tile.suit, 'B', 'Remaining Que tile 
 assert.strictEqual(autoQueState.players[0].hand.some(t => t.suit === 'B'), false, 'No Que tiles should remain in hand');
 
 console.log('✓ 欠色自動切りモードテスト通過');
+
+console.log('\n--- 13. 自摸ログ制御（他人の摸牌ログ非表示）テスト ---');
+const logTestState = new GameState();
+logTestState.phase = CONFIG.PHASES.PLAYING;
+logTestState.currentTurn = 1; // プレイヤー1の手番
+logTestState.players[1].hand = new Array(13).fill({ id: 1, suit: 'W', num: 1, code: '1W' });
+logTestState.players[0].hand = new Array(13).fill({ id: 2, suit: 'W', num: 1, code: '1W' });
+logTestState.wall = [{ id: 999, suit: 'T', num: 9, code: '9T' }, { id: 998, suit: 'T', num: 8, code: '8T' }];
+
+let lastLoggedMsg = null;
+const mockUI = {
+    ...dummyUI,
+    log: (msg) => { lastLoggedMsg = msg; }
+};
+const logCtrl = new GameController(logTestState, dummySound, mockUI, MahjongEngine, MahjongAI, null, GameFlow, DeterministicPRNG);
+logCtrl.mySeat = 0; // 自身はプレイヤー0
+
+// 他人(プレイヤー1)のツモ
+logCtrl.processTurn();
+assert.strictEqual(lastLoggedMsg, null, '他人の自摸（摸牌）はログに出力されてはならない');
+
+// 自分(プレイヤー0)のツモ
+logTestState.currentTurn = 0;
+logCtrl.processTurn();
+assert(lastLoggedMsg && lastLoggedMsg.includes('摸'), '自分の自摸（摸牌）はログに出力される必要がある');
+
+console.log('✓ 他人の自摸ログ非表示テスト通過');
+
+console.log('\n--- 14. オフターンタイムアウト撤廃＆切断時調停フォールバックテスト ---');
+const discTestState = new GameState();
+discTestState.phase = CONFIG.PHASES.PLAYING;
+discTestState.currentTurn = 0;
+const mockDisconnectP2P = {
+    isHost: true,
+    playersInfo: [
+        { id: 0, name: '1P', isAI: false, peerId: 'host' },
+        { id: 1, name: '2P', isAI: false, peerId: 'client1' },
+        { id: 2, name: '3P', isAI: true, peerId: null },
+        { id: 3, name: '4P', isAI: true, peerId: null }
+    ],
+    sendToSeat: () => true,
+    broadcastState: () => {},
+    broadcastRoomInfo: () => {}
+};
+const discCtrl = new GameController(discTestState, dummySound, dummyUI, MahjongEngine, MahjongAI, mockDisconnectP2P, GameFlow, DeterministicPRNG);
+
+// プレイヤー1がポン可能な状態で待機
+discCtrl.pendingOffTurn = {
+    idx: 1,
+    tile: { id: 701, suit: 'W', num: 1, code: '1W' },
+    discarder: 0,
+    offset: 2
+};
+
+// クライアント1が切断した際のフォールバック
+discCtrl.handlePlayerDisconnect(1);
+assert.strictEqual(discCtrl.pendingOffTurn, null, '切断時に待機中調停が安全に解消されること');
+assert.strictEqual(discTestState.players[1].name, '2P (电脑)', '切断プレイヤーがAI化されること');
+
+console.log('✓ オフターンタイムアウト撤廃＆切断時調停フォールバックテスト通過');
+
+console.log('\n--- 15. マイナス点プレイヤー脱落＆ゲーム継続テスト ---');
+const elimState = new GameState();
+elimState.phase = CONFIG.PHASES.PLAYING;
+elimState.players[1].score = 200; // プレイヤー1が低得点
+elimState.players[0].score = 5000;
+
+// プレイヤー1からプレイヤー0へ400点移動（点数がマイナスになり脱落）
+elimState.transferScore(1, 0, 400);
+assert.strictEqual(elimState.players[1].score, -200, 'スコアがマイナスになること');
+assert.strictEqual(elimState.players[1].isEliminated, true, 'マイナス点プレイヤーが脱落(isEliminated=true)になること');
+
+// まだ他プレイヤー(0, 2, 3)が生存しているためゲームは継続(isGameOver=false)
+assert.strictEqual(elimState.isGameOver(), false, '1人脱落しても残りが複数人生存していればゲーム継続すること');
+
+// 脱落プレイヤーの手番スキップ検証 (生存者が残っている状態でプレイヤー1の手番)
+const elimCtrl = new GameController(elimState, dummySound, dummyUI, MahjongEngine, MahjongAI, null, GameFlow, DeterministicPRNG);
+elimState.currentTurn = 1; // プレイヤー1(脱落)の手番
+elimCtrl.processTurn();
+assert.strictEqual(elimState.currentTurn, 2, '脱落プレイヤー1の手番が自動スキップされてプレイヤー2に移ること');
+
+// プレイヤー2, 3も脱落した場合
+elimState.players[2].isEliminated = true;
+elimState.players[2].score = 0;
+elimState.players[3].isEliminated = true;
+elimState.players[3].score = -500;
+assert.strictEqual(elimState.isGameOver(), true, '生存者が1人以下になった場合はゲーム終了となること');
+
+console.log('✓ マイナス点プレイヤー脱落＆ゲーム継続テスト通過');
+
+console.log('\n--- 16. 簡体字混じり直訳風日本語（JAモード）テスト ---');
+PinyinHelper.langMode = 'JA';
+assert.strictEqual(PinyinHelper.t('红中血流成河麻将'), '红中血流成河麻雀', 'タイトルが簡体字混じりの直訳風日本語に翻訳されること');
+assert.strictEqual(PinyinHelper.t('清一色'), '清一色', '清一色が直訳風に翻訳されること');
+assert.strictEqual(PinyinHelper.t('对对胡'), '对对胡', '对对胡が簡体字混じりで翻訳されること');
+assert.strictEqual(PinyinHelper.t('自摸'), '自摸', '自摸が翻訳されること');
+assert.strictEqual(PinyinHelper.t('点炮'), '点炮', '点炮が翻訳されること');
+assert.strictEqual(PinyinHelper.t('查大叫'), 'ノーテン罰符', '查大叫が翻訳されること');
+assert.strictEqual(PinyinHelper.t('查花猪'), '欠色ペナルティ', '查花猪が翻訳されること');
+assert.strictEqual(PinyinHelper.t('换三张'), '三张を换えて', '换三张が直訳風になること');
+assert.strictEqual(PinyinHelper.t('缺万'), '缺万', '缺万が翻訳されること');
+assert.strictEqual(PinyinHelper.t('先打缺门牌'), '先に缺门の牌を打ってください！', 'ログ文が中華直訳風になること');
+
+// UIController.getDingQueOptionsHtml の検証
+const dingQueHtml = UIController.getDingQueOptionsHtml();
+assert.ok(dingQueHtml.includes('wan_1.svg'), '定缺選択肢に1万のSVG画像が含まれること');
+assert.ok(dingQueHtml.includes('tong_1.svg'), '定缺選択肢に1筒のSVG画像が含まれること');
+assert.ok(dingQueHtml.includes('tiao_1.svg'), '定缺選択肢に1条のSVG画像が含まれること');
+
+console.log('✓ 簡体字混じり直訳風日本語＆定缺牌図表示テスト通過');
 
 console.log('\n========================================');
 console.log('★ 全ての検証テストに正常に合格しました！');

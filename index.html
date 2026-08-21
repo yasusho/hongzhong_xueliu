@@ -12,6 +12,7 @@
     <header class="game-header">
         <h1 class="game-title" id="game-title">红中血流成河麻将</h1>
         <div class="header-actions">
+            <button id="btn-lang" onclick="gameController.toggleLanguage()" title="言語切替 (日本語 / 中文)">日/中</button>
             <button id="btn-pinyin" onclick="gameController.togglePinyin()" title="切换拼音/汉字显示">汉↔A</button>
             <button id="btn-start" onclick="gameController.handleStartGame()">开始对局</button>
             <button id="btn-join" onclick="gameController.handleJoinRoom()">加入房间</button>
@@ -103,10 +104,13 @@
         </div>
     </div>
 
-    <script src="js/dsl.js?v=2.1"></script>
-    <script src="js/pinyin.js?v=2.1"></script>
-    <script src="js/engine.js?v=2.1"></script>
-    <script src="js/p2p.js?v=2.1"></script>
-    <script src="js/main.js?v=2.1"></script>
+    <script src="js/dsl.js?v=2.2"></script>
+    <script src="js/i18n.js?v=2.2"></script>
+    <script src="js/engine.js?v=2.2"></script>
+    <script src="js/p2p.js?v=2.2"></script>
+    <script src="js/sound.js?v=2.2"></script>
+    <script src="js/ui.js?v=2.2"></script>
+    <script src="js/game.js?v=2.2"></script>
+    <script src="js/main.js?v=2.2"></script>
 </body>
 </html>
