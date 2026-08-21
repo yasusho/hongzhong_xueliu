@@ -2,53 +2,61 @@
  * 紅中血流成河麻雀 - UI描画・サウンド・ゲーム進行コントローラー (UIController, SoundManager, GameController)
  */
 
-// --- 1. 定数・ピンインモジュール参照 (CONFIG, PinyinHelper) ---
-const _CONFIG = (typeof CONFIG !== 'undefined') ? CONFIG : ((typeof require !== 'undefined') ? require('./engine.js').CONFIG : {
-    SUITS: { W: '万', T: '筒', B: '条', HZ: '中' },
-    PHASES: { INIT: 'INIT', SWAP3: 'SWAP3', DINGQUE: 'DINGQUE', PLAYING: 'PLAYING', END: 'END' },
-    BASE_SCORE: 100, INITIAL_SCORE: 5000, TOTAL_PLAYERS: 4, HAND_SIZE: 13, GANG_SCORE: 200, HUA_ZHU_PENALTY: 1600,
-    DELAYS: { AI_TURN: 100, AUTO_ACTION: 100 }
-});
-if (typeof CONFIG === 'undefined') { var CONFIG = _CONFIG; }
+// --- 1. 依存モジュールの解決 (Browser / Node.js 両対応) ---
+const _CFG = (typeof globalThis !== 'undefined' && globalThis.CONFIG) ? globalThis.CONFIG : ((typeof require !== 'undefined') ? require('./engine.js').CONFIG : {});
+const _Pinyin = (typeof globalThis !== 'undefined' && globalThis.PinyinHelper) ? globalThis.PinyinHelper : ((typeof require !== 'undefined') ? require('./pinyin.js').PinyinHelper : null);
+const _Dict = (typeof globalThis !== 'undefined' && globalThis.PINYIN_DICT) ? globalThis.PINYIN_DICT : ((typeof require !== 'undefined') ? require('./pinyin.js').PINYIN_DICT : null);
 
-const _PinyinHelper = (typeof PinyinHelper !== 'undefined') ? PinyinHelper : ((typeof require !== 'undefined') ? require('./pinyin.js').PinyinHelper : null);
-const _PINYIN_DICT = (typeof PINYIN_DICT !== 'undefined') ? PINYIN_DICT : ((typeof require !== 'undefined') ? require('./pinyin.js').PINYIN_DICT : null);
-
-const pyT = text => _PinyinHelper ? _PinyinHelper.t(text) : text;
+const pyT = text => _Pinyin ? _Pinyin.t(text) : text;
 
 // --- 2. サウンド管理 (SoundManager) ---
 class SoundManager {
     constructor() {
+        this._ctx = null;
+        this.gain = null;
         if (typeof window === 'undefined') return;
+
         const resumeAudio = () => {
-            if (this._ctx && this._ctx.state === 'suspended') this._ctx.resume().catch(() => {});
+            if (this._ctx && this._ctx.state === 'suspended') {
+                this._ctx.resume().catch(() => {});
+            }
         };
-        ['click', 'keydown', 'touchstart', 'pointerdown'].forEach(ev => window.addEventListener(ev, resumeAudio, { passive: true }));
+        ['click', 'keydown', 'touchstart', 'pointerdown'].forEach(ev => {
+            window.addEventListener(ev, resumeAudio, { passive: true });
+        });
     }
 
     get ctx() {
         if (!this._ctx && typeof window !== 'undefined') {
-            const AC = window.AudioContext || window.webkitAudioContext;
-            if (AC) {
-                this._ctx = new AC();
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            if (AudioCtx) {
+                this._ctx = new AudioCtx();
                 this.gain = this._ctx.createGain();
                 this.gain.gain.value = 0.6;
                 this.gain.connect(this._ctx.destination);
             }
         }
-        if (this._ctx && this._ctx.state === 'suspended') this._ctx.resume().catch(() => {});
+        if (this._ctx && this._ctx.state === 'suspended') {
+            this._ctx.resume().catch(() => {});
+        }
         return this._ctx;
     }
 
     play(type) {
-        const c = this.ctx;
-        if (!c) return;
-        const H = {
+        const audioCtx = this.ctx;
+        if (!audioCtx) return;
+
+        const soundEffects = {
             discard: () => {
-                this._tone('triangle', (f, t) => { f.setValueAtTime(360, t); f.exponentialRampToValueAtTime(80, t + 0.07); }, 0.5, 0.07);
+                this._tone('triangle', (f, t) => {
+                    f.setValueAtTime(360, t);
+                    f.exponentialRampToValueAtTime(80, t + 0.07);
+                }, 0.5, 0.07);
             },
             select: () => {
-                this._tone('sine', (f, t) => { f.setValueAtTime(750, t); }, 0.25, 0.05);
+                this._tone('sine', (f, t) => {
+                    f.setValueAtTime(750, t);
+                }, 0.25, 0.05);
             },
             action: () => {
                 this._tone('triangle', (f, t) => { f.setValueAtTime(523, t); }, 0.35, 0.08, 0);
@@ -60,7 +68,8 @@ class SoundManager {
                 });
             }
         };
-        H[type]?.();
+
+        soundEffects[type]?.();
     }
 
     _tone(type, freqFn, gainVal, dur, delay = 0) {
@@ -86,18 +95,43 @@ class SoundManager {
         } catch (e) {}
     }
 }
+
 const soundManager = new SoundManager();
 
 // --- 3. UI描画・表示管理 (UIController) ---
 class UIController {
     static $ = id => (typeof document !== 'undefined' ? document.getElementById(id) : null);
-    static getTileHtml = (t, extra = '') => !t ? '' : `<img class="tile-img ${extra}".trim() src="${MahjongEngine.tileToSvgPath(t)}" alt="${MahjongEngine.tileToString(t)}" draggable="false" />`;
-    static getMeldsHtml = (melds, size = 'normal') => !melds?.length ? (size === 'small' ? '-' : '') : melds.map(m => `<span class="meld-group">${this.getTileHtml(m.tile, size === 'small' ? 'tile-small' : '').repeat(m.type === 'PUNG' ? 3 : 4)}</span>`).join('');
-    static getDiscardsHtml = (discards, last) => (discards || []).map(t => this.getTileHtml(t, `tile-river${last?.tile?.id === t.id ? ' latest' : ''}`)).join('');
+
+    static getTileHtml(t, extra = '') {
+        if (!t) return '';
+        const Engine = (typeof globalThis !== 'undefined' && globalThis.MahjongEngine) || (typeof MahjongEngine !== 'undefined' ? MahjongEngine : null);
+        const svg = Engine ? Engine.tileToSvgPath(t) : '';
+        const str = Engine ? Engine.tileToString(t) : '';
+        return `<img class="tile-img ${extra}".trim() src="${svg}" alt="${str}" draggable="false" />`;
+    }
+
+    static getMeldsHtml(melds, size = 'normal') {
+        if (!melds?.length) return (size === 'small' ? '-' : '');
+        return melds.map(m => {
+            const imgHtml = this.getTileHtml(m.tile, size === 'small' ? 'tile-small' : '');
+            return `<span class="meld-group">${imgHtml.repeat(m.type === 'PUNG' ? 3 : 4)}</span>`;
+        }).join('');
+    }
+
+    static getDiscardsHtml(discards, last) {
+        return (discards || []).map(t => {
+            const isLatest = last?.tile?.id === t.id;
+            return this.getTileHtml(t, `tile-river${isLatest ? ' latest' : ''}`);
+        }).join('');
+    }
 
     static applyPinyinMode(isPinyin) {
-        if (_PinyinHelper) _PinyinHelper.isPinyin = isPinyin;
-        const set = (id, zh, py) => { const el = this.$(id); if (el) el.innerText = isPinyin ? py : zh; };
+        if (_Pinyin) _Pinyin.isPinyin = isPinyin;
+        const set = (id, zh, py) => {
+            const el = this.$(id);
+            if (el) el.innerText = isPinyin ? py : zh;
+        };
+
         set('game-title', '红中血流成河麻将', 'Hóngzhōng Xuèliú Chénghé Mǎjiàng');
         set('btn-start', '开始对局', 'Kāishǐ Duìjú');
         set('btn-join', '加入房间', 'Jiārù Fángjiān');
@@ -119,7 +153,10 @@ class UIController {
         set('btn-reset-room', '新建房间 (重置)', 'Xīnjiàn Fángjiān (Chóngzhì)');
         set('auto-hu-msg', '已胡牌（自动摸打中）', 'Yǐ Hú (Zìdòng mō dǎ zhōng)');
 
-        const setTitle = (id, zh, py) => { const el = this.$(id); if (el) el.title = isPinyin ? py : zh; };
+        const setTitle = (id, zh, py) => {
+            const el = this.$(id);
+            if (el) el.title = isPinyin ? py : zh;
+        };
         setTitle('btn-change-room', '重新生成4位房间号', 'Chóngxīn shēngchéng 4 wèi fángjiānhào');
         setTitle('btn-change-name', '修改你的显示昵称', 'Xiūgǎi nǐ de xiǎnshì nǐchēng');
         setTitle('btn-pinyin', '切换拼音/汉字显示', 'Qiēhuàn pīnyīn/hànzì xiǎnshì');
@@ -132,44 +169,48 @@ class UIController {
         }
 
         const autoBtn = this.$('btn-auto');
-        if (autoBtn && window.gameState) {
-            autoBtn.innerText = isPinyin ? `Tuōguǎn: ${window.gameState.autoPlay ? 'Kāi' : 'Guān'}` : `托管: ${window.gameState.autoPlay ? '开' : '关'}`;
+        if (autoBtn && (typeof globalThis !== 'undefined' && globalThis.gameState)) {
+            autoBtn.innerText = isPinyin ? `Tuōguǎn: ${globalThis.gameState.autoPlay ? 'Kāi' : 'Guān'}` : `托管: ${globalThis.gameState.autoPlay ? '开' : '关'}`;
         }
     }
 
     static render(state, mySeat = 0) {
+        const CFG = (typeof globalThis !== 'undefined' && globalThis.CONFIG) || _CFG;
         const wall = this.$('wall-num');
         if (wall) wall.innerText = state.wallCount ?? state.wall?.length ?? 112;
         if (state.logs) this.renderLogs(state.logs);
 
-        const isQue = [CONFIG.PHASES.PLAYING, CONFIG.PHASES.END].includes(state.phase);
-        const opps = [1, 2, 3].map(o => (mySeat + o) % CONFIG.TOTAL_PLAYERS);
+        const isQue = [CFG.PHASES.PLAYING, CFG.PHASES.END].includes(state.phase);
+        const opps = [1, 2, 3].map(o => (mySeat + o) % CFG.TOTAL_PLAYERS);
 
+        // 他家プレイヤー一覧描画
         const tbody = this.$('opponents-tbody');
         if (tbody) {
             tbody.innerHTML = opps.map(i => state.players[i]).filter(Boolean).map(p => `
-                <tr class="${state.phase === CONFIG.PHASES.PLAYING && state.currentTurn === p.id ? 'turn-active' : ''}">
-                    <td>${pyT(p.name)}${state.phase === CONFIG.PHASES.PLAYING && state.currentTurn === p.id ? ` [${pyT('手番')}]` : ''}</td>
+                <tr class="${state.phase === CFG.PHASES.PLAYING && state.currentTurn === p.id ? 'turn-active' : ''}">
+                    <td>${pyT(p.name)}${state.phase === CFG.PHASES.PLAYING && state.currentTurn === p.id ? ` [${pyT('手番')}]` : ''}</td>
                     <td class="player-score">${p.score}</td>
-                    <td>${(isQue && p.que) ? `<span class="tag-que">${pyT('缺' + CONFIG.SUITS[p.que])}</span> ` : ''}${p.isHu ? `<span class="tag-hu">${pyT('已胡')}${p.huRecords.length}</span>` : ''}</td>
+                    <td>${(isQue && p.que) ? `<span class="tag-que">${pyT('缺' + CFG.SUITS[p.que])}</span> ` : ''}${p.isHu ? `<span class="tag-hu">${pyT('已胡')}${p.huRecords.length}</span>` : ''}</td>
                     <td>${this.getMeldsHtml(p.melds, 'small')}</td>
                 </tr>`).join('');
         }
 
+        // 捨て牌（河）描画
         const river = this.$('river-container');
         if (river) {
             river.innerHTML = [...opps, mySeat].map(i => state.players[i]).filter(Boolean).map(p => `
                 <div class="river-row"><span class="river-label">${pyT(p.name)}:</span><span class="river-tiles">${this.getDiscardsHtml(p.discards, state.lastDiscard)}</span></div>`).join('');
         }
 
+        // 自身の手牌・情報描画
         const myP = state.players[mySeat];
         if (myP) {
             if (typeof document !== 'undefined') {
-                document.querySelector('.my-section')?.classList.toggle('turn-active', state.phase === CONFIG.PHASES.PLAYING && state.currentTurn === mySeat);
+                document.querySelector('.my-section')?.classList.toggle('turn-active', state.phase === CFG.PHASES.PLAYING && state.currentTurn === mySeat);
             }
             const set = (id, txt) => { const el = this.$(id); if (el) el.innerText = txt; };
             set('hand-score-0', myP.score);
-            set('hand-que-0', (isQue && myP.que) ? pyT(`缺${CONFIG.SUITS[myP.que]}`) : '');
+            set('hand-que-0', (isQue && myP.que) ? pyT(`缺${CFG.SUITS[myP.que]}`) : '');
             set('hu-tag-0', myP.isHu ? `${pyT('已胡')}${myP.huRecords.length}` : '');
             this.renderHand(myP, state, mySeat);
             if (isQue) this.updateTingPanel(myP);
@@ -183,13 +224,16 @@ class UIController {
     }
 
     static renderHand(player, state, mySeat = 0) {
+        const CFG = (typeof globalThis !== 'undefined' && globalThis.CONFIG) || _CFG;
+        const Engine = (typeof globalThis !== 'undefined' && globalThis.MahjongEngine) || (typeof MahjongEngine !== 'undefined' ? MahjongEngine : null);
         const hand0 = this.$('hand-0'), melds0 = this.$('melds-0');
         if (!hand0 || !melds0) return;
+
         melds0.innerHTML = this.getMeldsHtml(player.melds, 'normal');
         hand0.innerHTML = '';
 
-        const isDrawn = (state.phase === CONFIG.PHASES.PLAYING && state.currentTurn === mySeat && player.hand.length % 3 === 2);
-        const isQue = [CONFIG.PHASES.PLAYING, CONFIG.PHASES.END].includes(state.phase);
+        const isDrawn = (state.phase === CFG.PHASES.PLAYING && state.currentTurn === mySeat && player.hand.length % 3 === 2);
+        const isQue = [CFG.PHASES.PLAYING, CFG.PHASES.END].includes(state.phase);
         const hasQue = isQue && player.hand.some(t => t.suit === player.que);
 
         player.hand.forEach((tile, idx) => {
@@ -198,29 +242,49 @@ class UIController {
                 sp.className = 'tsumo-divider';
                 hand0.appendChild(sp);
             }
-            const isSwap = (state.phase === CONFIG.PHASES.SWAP3);
+            const isSwap = (state.phase === CFG.PHASES.SWAP3);
             const isSel = isSwap && state.selectedSwapIndices?.includes(idx);
             const isQueTile = isQue && (tile.suit === player.que);
             const isPlayable = isSwap || (isDrawn && (player.isHu ? idx === player.hand.length - 1 : (!hasQue || isQueTile)));
 
             const img = document.createElement('img');
             img.className = `tile-img ${isSel ? 'selected' : ''} ${isQueTile ? 'is-que' : ''} ${isPlayable ? 'tile-playable' : 'tile-disabled'}`.trim();
-            img.src = MahjongEngine.tileToSvgPath(tile) || '';
-            img.alt = MahjongEngine.tileToString(tile) || '';
+            img.src = Engine ? Engine.tileToSvgPath(tile) : '';
+            img.alt = Engine ? Engine.tileToString(tile) : '';
             img.draggable = false;
             img.onclick = () => window.gameController?.handleTileClick(idx);
             hand0.appendChild(img);
         });
     }
 
-    static renderLogs(logs) { const el = this.$('cmd-log'); if (el && logs) { el.innerHTML = logs.map(l => `<div>> ${pyT(l)}</div>`).join(''); el.scrollTop = el.scrollHeight; } }
-    static log(text) { const el = this.$('cmd-log'); if (el) { const d = document.createElement('div'); d.innerText = `> ${pyT(text)}`; el.appendChild(d); el.scrollTop = el.scrollHeight; } }
-    static clearLog(text = '系统就绪。') { const el = this.$('cmd-log'); if (el) el.innerHTML = `<div>> ${pyT(text)}</div>`; }
+    static renderLogs(logs) {
+        const el = this.$('cmd-log');
+        if (el && logs) {
+            el.innerHTML = logs.map(l => `<div>> ${pyT(l)}</div>`).join('');
+            el.scrollTop = el.scrollHeight;
+        }
+    }
+
+    static log(text) {
+        const el = this.$('cmd-log');
+        if (el) {
+            const d = document.createElement('div');
+            d.innerText = `> ${pyT(text)}`;
+            el.appendChild(d);
+            el.scrollTop = el.scrollHeight;
+        }
+    }
+
+    static clearLog(text = '系统就绪。') {
+        const el = this.$('cmd-log');
+        if (el) el.innerHTML = `<div>> ${pyT(text)}</div>`;
+    }
 
     static updateTingPanel(player) {
         const info = this.$('ting-info'), list = this.$('ting-list');
         if (!info || !list) return;
-        const tingTiles = MahjongEngine.getTingTiles(player);
+        const Engine = (typeof globalThis !== 'undefined' && globalThis.MahjongEngine) || (typeof MahjongEngine !== 'undefined' ? MahjongEngine : null);
+        const tingTiles = Engine ? Engine.getTingTiles(player) : [];
         info.style.display = tingTiles.length ? 'inline-flex' : 'none';
         list.innerHTML = tingTiles.map(t => this.getTileHtml(t, 'tile-ting')).join('');
     }
@@ -233,18 +297,39 @@ class UIController {
         this.$('instruction-options').innerHTML = optionsHtml;
         box.style.display = 'flex';
     }
-    static hideInstruction = () => { const el = this.$('phase-instruction'); if (el) el.style.display = 'none'; };
+
+    static hideInstruction = () => {
+        const el = this.$('phase-instruction');
+        if (el) el.style.display = 'none';
+    };
 
     static showActionBox(showHu, showGang, showPung, onHu, onGang, onPung, onPass) {
-        const huTxt = pyT('胡') + ' (H)', gangTxt = pyT('杠') + ' (G)', pungTxt = pyT('碰') + ' (P)', passTxt = pyT('过') + ' (X)';
-        [['btn-hu', showHu, onHu, huTxt], ['btn-gang', showGang, onGang, gangTxt], ['btn-pung', showPung, onPung, pungTxt], ['btn-pass', true, onPass, passTxt]].forEach(([id, show, h, txt]) => {
+        const huTxt = pyT('胡') + ' (H)';
+        const gangTxt = pyT('杠') + ' (G)';
+        const pungTxt = pyT('碰') + ' (P)';
+        const passTxt = pyT('过') + ' (X)';
+
+        [
+            ['btn-hu', showHu, onHu, huTxt],
+            ['btn-gang', showGang, onGang, gangTxt],
+            ['btn-pung', showPung, onPung, pungTxt],
+            ['btn-pass', true, onPass, passTxt]
+        ].forEach(([id, show, handler, txt]) => {
             const btn = this.$(id);
-            if (btn) { btn.style.display = show ? 'inline-block' : 'none'; btn.onclick = h; btn.innerText = txt; }
+            if (btn) {
+                btn.style.display = show ? 'inline-block' : 'none';
+                btn.onclick = handler;
+                btn.innerText = txt;
+            }
         });
         const box = this.$('cmd-box');
         if (box) box.style.display = 'inline-flex';
     }
-    static hideActionBox = () => { const el = this.$('cmd-box'); if (el) el.style.display = 'none'; };
+
+    static hideActionBox = () => {
+        const el = this.$('cmd-box');
+        if (el) el.style.display = 'none';
+    };
 
     static showResultModal(players, penaltyLogs = []) {
         const modal = this.$('result-modal');
@@ -259,7 +344,7 @@ class UIController {
         const sorted = [...players].sort((a, b) => b.score - a.score);
 
         const ranksHtml = sorted.map((p, idx) => {
-            const huList = (p.huRecords || []).map((r, i) => {
+            const huList = (p.huRecords || []).map(r => {
                 const yakuStr = (r.fanName || '').split('自摸').join('').trim() || '平胡';
                 const fanInfoStr = `${r.fan} ${pyT('番')}: ${r.isZiMo ? `${pyT('自摸')} ` : ''}${pyT(yakuStr)}`;
                 return `<div class="result-hu-item">• ${r.score} ${pyT('分')} (${fanInfoStr.trim()})</div>`;
@@ -290,29 +375,56 @@ class UIController {
         if (btn) {
             const restartZh = ctrl?.isOnline ? (isHost ? '再来一局 (房主开始)' : '等待房主再来一局') : '再来一局';
             const restartPy = ctrl?.isOnline ? (isHost ? 'Zàilái Yìjú (Fángzhǔ kāishǐ)' : 'Děngdài fángzhǔ zàilái yìjú') : 'Zàilái Yìjú';
-            btn.innerText = _PinyinHelper?.isPinyin ? restartPy : restartZh;
+            btn.innerText = _Pinyin?.isPinyin ? restartPy : restartZh;
             btn.disabled = Boolean(ctrl?.isOnline && !isHost);
             btn.onclick = () => (ctrl?.isOnline ? ctrl.startOnlineMatch() : ctrl?.initGame(false));
         }
         modal.style.display = 'flex';
     }
-    static hideResultModal = () => { const el = this.$('result-modal'); if (el) el.style.display = 'none'; };
+
+    static hideResultModal = () => {
+        const el = this.$('result-modal');
+        if (el) el.style.display = 'none';
+    };
 }
 
 // --- 4. ゲーム進行コントローラー (GameController) ---
 class GameController {
     constructor(state, sound, ui, engine, ai, p2p, flow, dslPrng = null) {
-        Object.assign(this, { state, sound, ui, engine, ai, p2p, flow, dslPrng, isOnline: false, isDiscarding: false, pendingOffTurn: null, pinyinMode: false });
+        Object.assign(this, {
+            state, sound, ui, engine, ai, p2p, flow, dslPrng,
+            isOnline: false,
+            isDiscarding: false,
+            pendingOffTurn: null,
+            pinyinMode: false
+        });
         this.initP2PEvents();
     }
 
-    log(text) { (this.state.logs = this.state.logs || []).push(text); if (this.state.logs.length > 50) this.state.logs.shift(); this.ui.log(text); }
-    clearLog(text = '系统就绪。') { this.state.logs = [text]; this.ui.clearLog(text); }
+    get config() {
+        return (typeof globalThis !== 'undefined' && globalThis.CONFIG) || _CFG;
+    }
 
-    get mySeat() { return (!this.p2p?.isHost && this.p2p?.seatIndex != null) ? this.p2p.seatIndex : 0; }
+    log(text) {
+        this.state.logs = this.state.logs || [];
+        this.state.logs.push(text);
+        if (this.state.logs.length > 50) this.state.logs.shift();
+        this.ui.log(text);
+    }
+
+    clearLog(text = '系统就绪。') {
+        this.state.logs = [text];
+        this.ui.clearLog(text);
+    }
+
+    get mySeat() {
+        return (!this.p2p?.isHost && this.p2p?.seatIndex != null) ? this.p2p.seatIndex : 0;
+    }
+
     getMyName() {
         try { return localStorage.getItem('hz_username') || ''; } catch (e) { return ''; }
     }
+
     setMyName(name) {
         try { localStorage.setItem('hz_username', name); } catch (e) {}
     }
@@ -362,9 +474,13 @@ class GameController {
     }
 
     initGame(isOnlineMatch = false, customSeed = null) {
+        const CFG = this.config;
         Object.assign(this, { isOnline: isOnlineMatch, isDiscarding: false, pendingOffTurn: null });
-        this.ui.hideInstruction(); this.ui.hideResultModal(); this.ui.hideActionBox();
-        const tingEl = UIController.$('ting-info'); if (tingEl) tingEl.style.display = 'none';
+        this.ui.hideInstruction();
+        this.ui.hideResultModal();
+        this.ui.hideActionBox();
+        const tingEl = UIController.$('ting-info');
+        if (tingEl) tingEl.style.display = 'none';
 
         this.state.reset();
         this.state.players.forEach((p, i) => { p.name = this.getBasePlayerName(i); });
@@ -373,16 +489,16 @@ class GameController {
         const seed = customSeed || Math.floor(Math.random() * 0xFFFFFFFF);
         this.state.gameSeed = seed;
 
-        const PRNGClass = this.dslPrng || (typeof DeterministicPRNG !== 'undefined' ? DeterministicPRNG : null);
+        const PRNGClass = this.dslPrng || (typeof globalThis !== 'undefined' && globalThis.DeterministicPRNG) || null;
         const prng = PRNGClass ? new PRNGClass(seed) : null;
 
-        const start = prng ? prng.nextInt(0, CONFIG.TOTAL_PLAYERS - 1) : Math.floor(Math.random() * CONFIG.TOTAL_PLAYERS);
+        const start = prng ? prng.nextInt(0, CFG.TOTAL_PLAYERS - 1) : Math.floor(Math.random() * CFG.TOTAL_PLAYERS);
         this.state.startPlayer = this.state.currentTurn = start;
         this.clearLog(`新局开始，${this.state.players[start].name} 起家`);
 
         const deck = this.engine.shuffle(this.engine.createDeck(), prng);
-        for (let r = 0; r < CONFIG.HAND_SIZE; r++) {
-            for (let p = 0; p < CONFIG.TOTAL_PLAYERS; p++) this.state.players[p].hand.push(deck.pop());
+        for (let r = 0; r < CFG.HAND_SIZE; r++) {
+            for (let p = 0; p < CFG.TOTAL_PLAYERS; p++) this.state.players[p].hand.push(deck.pop());
         }
         this.state.players[start].hand.push(deck.pop());
         this.state.wall = deck;
@@ -399,7 +515,7 @@ class GameController {
 
     handleResetAndNewRoom() {
         UIController.hideResultModal();
-        sessionStorage.removeItem('hz_session');
+        try { sessionStorage.removeItem('hz_session'); } catch (e) {}
         this.p2p.reset();
         const code = String(Math.floor(1000 + Math.random() * 9000));
         this.handleCreateRoom(code);
@@ -420,7 +536,6 @@ class GameController {
         if (this.state.players[this.mySeat]) {
             this.state.players[this.mySeat].name = formattedName;
         }
-
         if (this.p2p?.playersInfo?.[this.mySeat]) {
             this.p2p.playersInfo[this.mySeat].name = formattedName;
         }
@@ -446,12 +561,12 @@ class GameController {
             const c = await this.p2p.createRoom(code, hostName);
             this.showRoomBar(c, '房主');
             this.updateRoomMembersDisplay();
-            sessionStorage.setItem('hz_session', JSON.stringify({ role: 'host', roomCode: c }));
+            try { sessionStorage.setItem('hz_session', JSON.stringify({ role: 'host', roomCode: c })); } catch (e) {}
         } catch (e) {}
     }
 
     async handleChangeRoom() {
-        sessionStorage.removeItem('hz_session');
+        try { sessionStorage.removeItem('hz_session'); } catch (e) {}
         const code = String(Math.floor(1000 + Math.random() * 9000));
         await this.handleCreateRoom(code);
         this.initGame(false);
@@ -471,9 +586,13 @@ class GameController {
             this.state.selectedSwapIndices = [];
             this.showRoomBar(this.p2p.roomCode, '玩家');
             this.updateRoomMembersDisplay();
-            sessionStorage.setItem('hz_session', JSON.stringify({ role: 'client', roomCode: this.p2p.roomCode, seatIndex: this.p2p.seatIndex }));
+            try {
+                sessionStorage.setItem('hz_session', JSON.stringify({ role: 'client', roomCode: this.p2p.roomCode, seatIndex: this.p2p.seatIndex }));
+            } catch (e) {}
             this.log(`已加入 ${code.trim()}，等待开局...`);
-        } catch (err) { alert((this.pinyinMode ? 'Jiārù fángjiān shībài: ' : '加入房间失败: ') + (err.message || err)); }
+        } catch (err) {
+            alert((this.pinyinMode ? 'Jiārù fángjiān shībài: ' : '加入房间失败: ') + (err.message || err));
+        }
     }
 
     showRoomBar(code, role) {
@@ -491,12 +610,17 @@ class GameController {
         this.syncStateToPeers();
     }
 
-    syncStateToPeers() { if (this.p2p?.isHost) this.p2p.broadcastState(this.state); }
+    syncStateToPeers() {
+        if (this.p2p?.isHost) this.p2p.broadcastState(this.state);
+    }
 
     startSwap3Phase() {
-        this.state.phase = CONFIG.PHASES.SWAP3;
+        const CFG = this.config;
+        this.state.phase = CFG.PHASES.SWAP3;
         this.state.selectedSwapIndices = [];
-        this.state.players.forEach((p, i) => { p.swapTiles = this.isHumanPlayer(i) ? [] : this.ai.getSwapTiles(p.hand); });
+        this.state.players.forEach((p, i) => {
+            p.swapTiles = this.isHumanPlayer(i) ? [] : this.ai.getSwapTiles(p.hand);
+        });
         this.ui.render(this.state, this.mySeat);
         const confirmTxt = pyT('确定');
         this.ui.showInstruction('换三张', '选3张牌', `<button id="btn-confirm-swap" disabled onclick="gameController.confirmUserSwap()">${confirmTxt} (0/3)</button>`);
@@ -504,7 +628,8 @@ class GameController {
     }
 
     toggleSwapTileSelect(idx) {
-        if (this.state.phase !== CONFIG.PHASES.SWAP3) return;
+        const CFG = this.config;
+        if (this.state.phase !== CFG.PHASES.SWAP3) return;
         const p = this.state.players[this.mySeat], tile = p.hand[idx];
         if (!tile || tile.suit === 'HZ') return this.log('红中为万能牌，不能作为换三张牌打出');
 
@@ -529,7 +654,9 @@ class GameController {
         u.swapTiles = this.state.selectedSwapIndices.map(i => u.hand[i]);
         this.ui.hideInstruction();
         this.log('已选换牌，等待中...');
-        if (this.p2p && !this.p2p.isHost) return this.p2p.sendAction('CONFIRM_SWAP', { swapTiles: u.swapTiles, swapTileIds: u.swapTiles.map(t => t.id) });
+        if (this.p2p && !this.p2p.isHost) {
+            return this.p2p.sendAction('CONFIRM_SWAP', { swapTiles: u.swapTiles, swapTileIds: u.swapTiles.map(t => t.id) });
+        }
         this.checkAndExecuteSwap();
     }
 
@@ -541,8 +668,11 @@ class GameController {
     }
 
     startDingQuePhase() {
-        this.state.phase = CONFIG.PHASES.DINGQUE;
-        this.state.players.forEach((p, i) => { p.que = this.isHumanPlayer(i) ? null : this.ai.getDingQue(p.hand); });
+        const CFG = this.config;
+        this.state.phase = CFG.PHASES.DINGQUE;
+        this.state.players.forEach((p, i) => {
+            p.que = this.isHumanPlayer(i) ? null : this.ai.getDingQue(p.hand);
+        });
         this.ui.render(this.state, this.mySeat);
         const [wTxt, tTxt, bTxt] = [pyT('缺万'), pyT('缺筒'), pyT('缺条')];
         this.ui.showInstruction('定缺', '请选择定缺门类', `
@@ -553,28 +683,31 @@ class GameController {
     }
 
     selectUserQue(suit) {
+        const CFG = this.config;
         this.sound.play('select');
         if (this.state.players[this.mySeat]) this.state.players[this.mySeat].que = suit;
         this.ui.hideInstruction();
         this.ui.render(this.state, this.mySeat);
-        this.log(`已定${pyT('缺' + CONFIG.SUITS[suit])}，等待中...`);
+        this.log(`已定${pyT('缺' + CFG.SUITS[suit])}，等待中...`);
         if (this.p2p && !this.p2p.isHost) return this.p2p.sendAction('SELECT_QUE', { que: suit });
         this.checkAndExecuteDingQue();
     }
 
     checkAndExecuteDingQue() {
+        const CFG = this.config;
         if (!this.flow.checkDingQueComplete(this.state)) return this.syncStateToPeers();
         this.state.sortAllHands();
-        this.state.phase = CONFIG.PHASES.PLAYING;
-        this.log(`定缺: ${this.state.players.map(p => `${p.name} 缺${CONFIG.SUITS[p.que]}`).join(', ')}`);
+        this.state.phase = CFG.PHASES.PLAYING;
+        this.log(`定缺: ${this.state.players.map(p => `${p.name} 缺${CFG.SUITS[p.que]}`).join(', ')}`);
         this.ui.render(this.state, this.mySeat);
         this.syncStateToPeers();
         this.processTurn();
     }
 
     processTurn(isRinshan = false) {
+        const CFG = this.config;
         if (this.p2p && !this.p2p.isHost) return;
-        if (this.state.phase !== CONFIG.PHASES.PLAYING) return;
+        if (this.state.phase !== CFG.PHASES.PLAYING) return;
         if (this.state.isGameOver()) return this.endGame();
 
         const p = this.state.players[this.state.currentTurn];
@@ -596,12 +729,12 @@ class GameController {
             this.ui.updateTingPanel(p);
             if (this.state.autoPlay || p.isHu) {
                 this.ui.hideActionBox();
-                setTimeout(() => this.autoPlayPlayerTurn(this.mySeat), CONFIG.DELAYS.AI_TURN);
+                setTimeout(() => this.autoPlayPlayerTurn(this.mySeat), CFG.DELAYS.AI_TURN);
             } else {
                 this.checkPlayerTurnActions();
             }
         } else if (!this.isHumanPlayer(this.state.currentTurn) || p.isHu) {
-            setTimeout(() => this.autoPlayPlayerTurn(this.state.currentTurn), CONFIG.DELAYS.AI_TURN);
+            setTimeout(() => this.autoPlayPlayerTurn(this.state.currentTurn), CFG.DELAYS.AI_TURN);
         }
     }
 
@@ -611,49 +744,69 @@ class GameController {
             this.ui.hideActionBox();
             return;
         }
-        const drawn = p.hand[p.hand.length - 1], canHu = this.engine.checkCanHu(p, drawn), gangs = this.engine.checkCanGang(p);
+        const drawn = p.hand[p.hand.length - 1];
+        const canHu = this.engine.checkCanHu(p, drawn);
+        const gangs = this.engine.checkCanGang(p);
+
         if (canHu || gangs.length > 0) {
-            this.ui.showActionBox(canHu, gangs.length > 0, false,
+            this.ui.showActionBox(
+                canHu,
+                gangs.length > 0,
+                false,
                 () => this.handleActionClick('HU', { tile: drawn, isZiMo: true }),
                 () => this.handleActionClick('GANG', { gangOption: gangs[0] }),
                 null,
-                () => this.ui.hideActionBox());
-        } else this.ui.hideActionBox();
+                () => this.ui.hideActionBox()
+            );
+        } else {
+            this.ui.hideActionBox();
+        }
     }
 
     handleActionClick(action, payload) {
+        const CFG = this.config;
         this.ui.hideActionBox();
         if (this.p2p && !this.p2p.isHost) return this.p2p.sendAction(action, payload);
-        const H = {
+        const handlers = {
             HU: () => this.doHu(this.mySeat, payload.tile, payload.isZiMo, payload.fromPlayer),
             GANG: () => this.doGang(this.mySeat, payload.gangOption),
-            GANG_DISCARD: () => this._executeMeld(this.mySeat, 'GANG', payload.tile, payload.fromPlayer, 3, CONFIG.GANG_SCORE, true),
+            GANG_DISCARD: () => this._executeMeld(this.mySeat, 'GANG', payload.tile, payload.fromPlayer, 3, CFG.GANG_SCORE, true),
             PUNG: () => this._executeMeld(this.mySeat, 'PUNG', payload.tile, payload.fromPlayer, 2, 0, false)
         };
-        H[action]?.();
+        handlers[action]?.();
     }
 
     handleTileClick(index) {
-        if (this.state.phase === CONFIG.PHASES.SWAP3) return this.toggleSwapTileSelect(index);
-        if (this.state.phase !== CONFIG.PHASES.PLAYING || this.state.currentTurn !== this.mySeat) return;
+        const CFG = this.config;
+        if (this.state.phase === CFG.PHASES.SWAP3) return this.toggleSwapTileSelect(index);
+        if (this.state.phase !== CFG.PHASES.PLAYING || this.state.currentTurn !== this.mySeat) return;
 
         const p = this.state.players[this.mySeat];
         if (!p || p.hand.length % 3 !== 2) return;
         const tile = p.hand[index];
         if (!tile) return;
 
-        if (p.hand.some(t => t.suit === p.que) && tile.suit !== p.que) return this.log(`先打缺门牌(缺${CONFIG.SUITS[p.que]})`);
-        if (p.isHu && index !== p.hand.length - 1) return this.log('已胡牌只能打摸牌');
+        if (p.hand.some(t => t.suit === p.que) && tile.suit !== p.que) {
+            return this.log(`先打缺门牌(缺${CFG.SUITS[p.que]})`);
+        }
+        if (p.isHu && index !== p.hand.length - 1) {
+            return this.log('已胡牌只能打摸牌');
+        }
 
         this.ui.hideActionBox();
-        if (this.p2p && !this.p2p.isHost) return this.p2p.sendAction('DISCARD', { handIndex: index, tileId: tile.id, tileCode: tile.code });
+        if (this.p2p && !this.p2p.isHost) {
+            return this.p2p.sendAction('DISCARD', { handIndex: index, tileId: tile.id, tileCode: tile.code });
+        }
         this.executeDiscard(this.mySeat, index);
     }
 
     executeDiscard(pIdx, hIdx, tileId = null, tileCode = null) {
-        if (this.p2p && !this.p2p.isHost) return this.p2p.sendAction('DISCARD', { handIndex: hIdx, tileId, tileCode });
+        if (this.p2p && !this.p2p.isHost) {
+            return this.p2p.sendAction('DISCARD', { handIndex: hIdx, tileId, tileCode });
+        }
         const p = this.state.players[pIdx];
         if (!p || p.hand.length % 3 !== 2 || this.isDiscarding) return;
+
         this.isDiscarding = true;
         try {
             let actualIdx = -1;
@@ -677,11 +830,14 @@ class GameController {
 
             this.checkOffTurnActions(tile, pIdx);
             this.state.lastActionIsGang = false;
-        } finally { this.isDiscarding = false; }
+        } finally {
+            this.isDiscarding = false;
+        }
     }
 
     checkOffTurnActions(tile, discarder) {
-        const hus = [1, 2, 3].map(o => (discarder + o) % CONFIG.TOTAL_PLAYERS).filter(i => this.engine.checkCanHu(this.state.players[i], tile));
+        const CFG = this.config;
+        const hus = [1, 2, 3].map(o => (discarder + o) % CFG.TOTAL_PLAYERS).filter(i => this.engine.checkCanHu(this.state.players[i], tile));
         if (hus.length > 0) return this.arbitrateHu(hus, tile, discarder);
         this.arbitratePungGang(tile, discarder, 1);
     }
@@ -692,13 +848,16 @@ class GameController {
 
         cands.forEach(idx => {
             const isAuto = !this.isHumanPlayer(idx) || (idx === this.mySeat && (this.state.autoPlay || this.state.players[idx]?.isHu));
-            if (isAuto) decisions[idx] = 'HU';
-            else if (idx === this.mySeat) {
+            if (isAuto) {
+                decisions[idx] = 'HU';
+            } else if (idx === this.mySeat) {
                 pending++;
-                this.ui.showActionBox(true, false, false,
+                this.ui.showActionBox(
+                    true, false, false,
                     () => { this.ui.hideActionBox(); decisions[idx] = 'HU'; this.resolveHu(cands, decisions, tile, discarder); },
                     null, null,
-                    () => { this.ui.hideActionBox(); decisions[idx] = 'PASS'; this.resolveHu(cands, decisions, tile, discarder); });
+                    () => { this.ui.hideActionBox(); decisions[idx] = 'PASS'; this.resolveHu(cands, decisions, tile, discarder); }
+                );
             } else {
                 const sent = this.p2p.sendToSeat(idx, { type: 'PROMPT_OFFTURN_ACTION', options: { canHu: true, tile, fromPlayer: discarder } });
                 if (sent) {
@@ -709,7 +868,9 @@ class GameController {
                             this.resolveHu(this.pendingOffTurn.cands, this.pendingOffTurn.decisions, this.pendingOffTurn.tile, this.pendingOffTurn.discarder);
                         }
                     }, 5000);
-                } else decisions[idx] = 'PASS';
+                } else {
+                    decisions[idx] = 'PASS';
+                }
             }
         });
 
@@ -718,37 +879,42 @@ class GameController {
     }
 
     resolveHu(cands, decisions, tile, discarder) {
+        const CFG = this.config;
         if (!cands.every(i => decisions[i] !== undefined)) return;
         this.pendingOffTurn = null;
 
         const actual = cands.filter(i => decisions[i] === 'HU');
         if (actual.length > 0) {
             actual.forEach(i => this.doHu(i, tile, false, discarder));
-            this.state.currentTurn = (discarder + 1) % CONFIG.TOTAL_PLAYERS;
+            this.state.currentTurn = (discarder + 1) % CFG.TOTAL_PLAYERS;
             this.syncStateToPeers();
-            setTimeout(() => this.processTurn(), CONFIG.DELAYS.AI_TURN);
+            setTimeout(() => this.processTurn(), CFG.DELAYS.AI_TURN);
             return;
         }
         this.arbitratePungGang(tile, discarder, 1);
     }
 
     arbitratePungGang(tile, discarder, offset = 1) {
+        const CFG = this.config;
         for (let i = offset; i <= 3; i++) {
-            const idx = (discarder + i) % CONFIG.TOTAL_PLAYERS, p = this.state.players[idx];
+            const idx = (discarder + i) % CFG.TOTAL_PLAYERS, p = this.state.players[idx];
             if (p.isHu) continue;
 
-            const canG = this.engine.checkCanPungOrGang(p, tile, 'GANG'), canP = this.engine.checkCanPungOrGang(p, tile, 'PUNG');
+            const canG = this.engine.checkCanPungOrGang(p, tile, 'GANG');
+            const canP = this.engine.checkCanPungOrGang(p, tile, 'PUNG');
             if (!canG && !canP) continue;
 
             if (!this.isHumanPlayer(idx) || (idx === this.mySeat && this.state.autoPlay)) {
-                if (canG && this.ai.shouldGang(p, tile)) return this._executeMeld(idx, 'GANG', tile, discarder, 3, CONFIG.GANG_SCORE, true);
+                if (canG && this.ai.shouldGang(p, tile)) return this._executeMeld(idx, 'GANG', tile, discarder, 3, CFG.GANG_SCORE, true);
                 if (canP && this.ai.shouldPung(p, tile)) return this._executeMeld(idx, 'PUNG', tile, discarder, 2, 0, false);
                 if (idx === this.mySeat) return this.arbitratePungGang(tile, discarder, i + 1);
             } else if (idx === this.mySeat) {
-                return this.ui.showActionBox(false, canG, canP, null,
-                    () => { this.ui.hideActionBox(); this._executeMeld(this.mySeat, 'GANG', tile, discarder, 3, CONFIG.GANG_SCORE, true); },
+                return this.ui.showActionBox(
+                    false, canG, canP, null,
+                    () => { this.ui.hideActionBox(); this._executeMeld(this.mySeat, 'GANG', tile, discarder, 3, CFG.GANG_SCORE, true); },
                     () => { this.ui.hideActionBox(); this._executeMeld(this.mySeat, 'PUNG', tile, discarder, 2, 0, false); },
-                    () => { this.ui.hideActionBox(); this.arbitratePungGang(tile, discarder, i + 1); });
+                    () => { this.ui.hideActionBox(); this.arbitratePungGang(tile, discarder, i + 1); }
+                );
             } else {
                 const sent = this.p2p.sendToSeat(idx, { type: 'PROMPT_OFFTURN_ACTION', options: { canHu: false, canGang: canG, canPung: canP, tile, fromPlayer: discarder } });
                 if (sent) {
@@ -757,21 +923,20 @@ class GameController {
                         if (this.pendingOffTurn?.idx === idx) {
                             const info = this.pendingOffTurn;
                             this.pendingOffTurn = null;
-                            if (payload.choice === 'GANG') this._executeMeld(playerIndex, 'GANG', info.tile, info.discarder, 3, CONFIG.GANG_SCORE, true);
-                            else if (payload.choice === 'PUNG') this._executeMeld(playerIndex, 'PUNG', info.tile, info.discarder, 2, 0, false);
-                            else this.arbitratePungGang(info.tile, info.discarder, info.offset);
+                            this.arbitratePungGang(info.tile, info.discarder, info.offset);
                         }
                     }, 5000);
                     return;
                 }
             }
         }
-        this.state.currentTurn = (discarder + 1) % CONFIG.TOTAL_PLAYERS;
+        this.state.currentTurn = (discarder + 1) % CFG.TOTAL_PLAYERS;
         this.syncStateToPeers();
-        setTimeout(() => this.processTurn(), CONFIG.DELAYS.AI_TURN);
+        setTimeout(() => this.processTurn(), CFG.DELAYS.AI_TURN);
     }
 
     _executeMeld(pIdx, type, tile, from, removeCount, scoreTransfer, isGang) {
+        const CFG = this.config;
         if (this.p2p && !this.p2p.isHost) return this.p2p.sendAction(type === 'GANG' ? 'GANG_DISCARD' : 'PUNG', { tile, fromPlayer: from });
         this.sound.play('action');
         const p = this.state.players[pIdx];
@@ -789,18 +954,21 @@ class GameController {
         this.ui.render(this.state, this.mySeat);
         this.syncStateToPeers();
 
-        if (isGang) this.processTurn(true);
-        else if (pIdx === this.mySeat) {
+        if (isGang) {
+            this.processTurn(true);
+        } else if (pIdx === this.mySeat) {
             if (this.state.autoPlay || p.isHu) {
-                setTimeout(() => this.autoPlayPlayerTurn(pIdx), CONFIG.DELAYS.AI_TURN);
+                setTimeout(() => this.autoPlayPlayerTurn(pIdx), CFG.DELAYS.AI_TURN);
             } else {
                 this.checkPlayerTurnActions();
             }
+        } else if (!this.isHumanPlayer(pIdx) || p.isHu) {
+            setTimeout(() => this.autoPlayPlayerTurn(pIdx), CFG.DELAYS.AI_TURN);
         }
-        else if (!this.isHumanPlayer(pIdx) || p.isHu) setTimeout(() => this.autoPlayPlayerTurn(pIdx), CONFIG.DELAYS.AI_TURN);
     }
 
     doGang(pIdx, option) {
+        const CFG = this.config;
         if (this.p2p && !this.p2p.isHost) return this.p2p.sendAction('GANG', { gangOption: option });
         if (!option?.tile) return;
         this.sound.play('action');
@@ -818,7 +986,9 @@ class GameController {
             this.log(`${p.name} 暗杠 ${this.engine.tileToString(tile)}`);
         }
 
-        for (let o = 0; o < CONFIG.TOTAL_PLAYERS; o++) if (o !== pIdx) this.state.transferScore(o, pIdx, CONFIG.GANG_SCORE);
+        for (let o = 0; o < CFG.TOTAL_PLAYERS; o++) {
+            if (o !== pIdx) this.state.transferScore(o, pIdx, CFG.GANG_SCORE);
+        }
         this.state.lastActionIsGang = true;
         this.state.lastGangPlayer = pIdx;
         this.syncStateToPeers();
@@ -826,6 +996,7 @@ class GameController {
     }
 
     doHu(pIdx, tile, isZiMo, fromPlayer = null) {
+        const CFG = this.config;
         if (this.p2p && !this.p2p.isHost) return this.p2p.sendAction('HU', { tile, isZiMo, fromPlayer });
         this.sound.play('hu');
         const p = this.state.players[pIdx];
@@ -833,7 +1004,7 @@ class GameController {
         p.isHu = true;
 
         const fanInfo = this.engine.calculateFan(p, tile, isZiMo, fromPlayer, this.state);
-        const score = CONFIG.BASE_SCORE * Math.pow(2, fanInfo.fan);
+        const score = CFG.BASE_SCORE * Math.pow(2, fanInfo.fan);
 
         const yakuNames = (fanInfo.name || '平胡').replace(/\s*自摸\b/, '').trim();
         this.log(`★ ${p.name} ${isZiMo ? '自摸' : '点炮'}: ${yakuNames ? yakuNames + ' ' : ''}(${fanInfo.fan}番 ${score}分) ${this.engine.tileToString(tile)}`);
@@ -842,8 +1013,12 @@ class GameController {
         this.state.lastGangPlayer = null;
 
         if (isZiMo) {
-            for (let o = 0; o < CONFIG.TOTAL_PLAYERS; o++) if (o !== pIdx) this.state.transferScore(o, pIdx, score);
-        } else this.state.transferScore(fromPlayer, pIdx, score);
+            for (let o = 0; o < CFG.TOTAL_PLAYERS; o++) {
+                if (o !== pIdx) this.state.transferScore(o, pIdx, score);
+            }
+        } else {
+            this.state.transferScore(fromPlayer, pIdx, score);
+        }
 
         this.ui.hideActionBox();
         this.ui.render(this.state, this.mySeat);
@@ -853,7 +1028,8 @@ class GameController {
     }
 
     autoPlayPlayerTurn(pIdx) {
-        if (this.state.currentTurn !== pIdx || this.state.phase !== CONFIG.PHASES.PLAYING) return;
+        const CFG = this.config;
+        if (this.state.currentTurn !== pIdx || this.state.phase !== CFG.PHASES.PLAYING) return;
         const p = this.state.players[pIdx];
         if (!p || p.hand.length % 3 !== 2) return;
 
@@ -877,7 +1053,8 @@ class GameController {
     }
 
     endGame() {
-        this.state.phase = CONFIG.PHASES.END;
+        const CFG = this.config;
+        this.state.phase = CFG.PHASES.END;
         const logs = this.flow.calculateEndSettlement(this.state, this.engine);
         this.state.settlementLogs = logs;
         logs.forEach(l => this.log(l));
@@ -887,6 +1064,7 @@ class GameController {
     }
 
     handleRemoteStateSync(remoteState) {
+        const CFG = this.config;
         const isNewGame = Boolean(remoteState.gameSeed && this.state.gameSeed !== remoteState.gameSeed);
 
         // リモートの打牌・鳴き・和了の効果音同期
@@ -909,12 +1087,11 @@ class GameController {
         const mySwapTiles = isNewGame ? [] : this.state.players[this.mySeat]?.swapTiles;
 
         // DSL PRNGによる山と配牌の決定論的同期
-        if (remoteState.gameSeed && this.state.gameSeed !== remoteState.gameSeed && remoteState.phase !== CONFIG.PHASES.INIT) {
-            const PRNGClass = this.dslPrng || (typeof DeterministicPRNG !== 'undefined' ? DeterministicPRNG : null);
+        if (remoteState.gameSeed && this.state.gameSeed !== remoteState.gameSeed && remoteState.phase !== CFG.PHASES.INIT) {
+            const PRNGClass = this.dslPrng || (typeof globalThis !== 'undefined' && globalThis.DeterministicPRNG) || null;
             const prng = PRNGClass ? new PRNGClass(remoteState.gameSeed) : null;
-            const start = prng ? prng.nextInt(0, CONFIG.TOTAL_PLAYERS - 1) : remoteState.startPlayer;
             const deck = this.engine.shuffle(this.engine.createDeck(), prng);
-            for (let r = 0; r < CONFIG.HAND_SIZE * CONFIG.TOTAL_PLAYERS + 1; r++) deck.pop();
+            for (let r = 0; r < CFG.HAND_SIZE * CFG.TOTAL_PLAYERS + 1; r++) deck.pop();
             this.state.wall = deck;
             this.state.gameSeed = remoteState.gameSeed;
         }
@@ -932,39 +1109,43 @@ class GameController {
         this.state.players.forEach((p, i) => { p.name = this.getBasePlayerName(i); });
         this.updateRoomMembersDisplay();
 
-        const H = {
-            [CONFIG.PHASES.SWAP3]: () => {
+        const phaseHandlers = {
+            [CFG.PHASES.SWAP3]: () => {
                 this.state.selectedSwapIndices = savedIndices;
                 const myP = this.state.players[this.mySeat], c = this.state.selectedSwapIndices.length;
                 if (!myP?.swapTiles || myP.swapTiles.length !== 3) {
                     this.ui.showInstruction('换三张', '选3张牌', `<button id="btn-confirm-swap" ${c === 3 ? '' : 'disabled'} onclick="gameController.confirmUserSwap()">${pyT('确定')} (${c}/3)</button>`);
-                } else this.ui.hideInstruction();
+                } else {
+                    this.ui.hideInstruction();
+                }
             },
-            [CONFIG.PHASES.DINGQUE]: () => {
+            [CFG.PHASES.DINGQUE]: () => {
                 this.state.selectedSwapIndices = [];
                 if (!this.state.players[this.mySeat]?.que) {
                     const [wTxt, tTxt, bTxt] = [pyT('缺万'), pyT('缺筒'), pyT('缺条')];
                     this.ui.showInstruction('定缺', '请选择定缺门类', `<button onclick="gameController.selectUserQue('W')">${wTxt}</button><button onclick="gameController.selectUserQue('T')">${tTxt}</button><button onclick="gameController.selectUserQue('B')">${bTxt}</button>`);
-                } else this.ui.hideInstruction();
+                } else {
+                    this.ui.hideInstruction();
+                }
             },
-            [CONFIG.PHASES.PLAYING]: () => {
+            [CFG.PHASES.PLAYING]: () => {
                 this.ui.hideInstruction();
                 if (this.state.currentTurn === this.mySeat) {
                     const myP = this.state.players[this.mySeat];
                     if (this.state.autoPlay || myP?.isHu) {
                         this.ui.hideActionBox();
-                        setTimeout(() => this.autoPlayPlayerTurn(this.mySeat), CONFIG.DELAYS.AI_TURN);
+                        setTimeout(() => this.autoPlayPlayerTurn(this.mySeat), CFG.DELAYS.AI_TURN);
                     } else {
                         this.checkPlayerTurnActions();
                     }
                 }
             },
-            [CONFIG.PHASES.END]: () => {
+            [CFG.PHASES.END]: () => {
                 const logs = this.state.settlementLogs || this.flow.calculateEndSettlement(this.state, this.engine);
                 this.ui.showResultModal(this.state.players, logs);
             }
         };
-        H[this.state.phase]?.();
+        phaseHandlers[this.state.phase]?.();
         this.ui.render(this.state, this.mySeat);
     }
 
@@ -974,19 +1155,22 @@ class GameController {
             return this.p2p.sendAction('RESPONSE_OFFTURN', { choice: 'HU', tile: opt.tile, fromPlayer: opt.fromPlayer });
         }
         this.sound.play('action');
-        this.ui.showActionBox(opt.canHu, opt.canGang, opt.canPung,
+        this.ui.showActionBox(
+            opt.canHu, opt.canGang, opt.canPung,
             () => { this.ui.hideActionBox(); this.p2p.sendAction('RESPONSE_OFFTURN', { choice: 'HU', tile: opt.tile, fromPlayer: opt.fromPlayer }); },
             () => { this.ui.hideActionBox(); this.p2p.sendAction('RESPONSE_OFFTURN', { choice: 'GANG', tile: opt.tile, fromPlayer: opt.fromPlayer }); },
             () => { this.ui.hideActionBox(); this.p2p.sendAction('RESPONSE_OFFTURN', { choice: 'PUNG', tile: opt.tile, fromPlayer: opt.fromPlayer }); },
-            () => { this.ui.hideActionBox(); this.p2p.sendAction('RESPONSE_OFFTURN', { choice: 'PASS' }); });
+            () => { this.ui.hideActionBox(); this.p2p.sendAction('RESPONSE_OFFTURN', { choice: 'PASS' }); }
+        );
     }
 
     handleRemoteAction(playerIndex, action, payload) {
+        const CFG = this.config;
         if (!this.p2p?.isHost) return;
         const p = this.state.players[playerIndex];
         if (!p) return;
 
-        const H = {
+        const handlers = {
             SET_NAME: () => {
                 if (payload.name && this.p2p?.playersInfo?.[playerIndex]) {
                     const newName = String(payload.name).trim().slice(0, 8);
@@ -1000,21 +1184,25 @@ class GameController {
                 }
             },
             CONFIRM_SWAP: () => {
-                p.swapTiles = payload.swapTileIds ? payload.swapTileIds.map(id => p.hand.find(x => x.id === id)).filter(Boolean) : (payload.swapTiles || []).map(t => p.hand.find(x => x.suit === t.suit && x.num === t.num)).filter(Boolean);
-                if (p.swapTiles?.length !== 3) p.swapTiles = p.hand.filter(t => t.suit !== 'HZ').slice(0, 3);
+                p.swapTiles = payload.swapTileIds
+                    ? payload.swapTileIds.map(id => p.hand.find(x => x.id === id)).filter(Boolean)
+                    : (payload.swapTiles || []).map(t => p.hand.find(x => x.suit === t.suit && x.num === t.num)).filter(Boolean);
+                if (p.swapTiles?.length !== 3) {
+                    p.swapTiles = p.hand.filter(t => t.suit !== 'HZ').slice(0, 3);
+                }
                 this.log(`${p.name} 已选换牌`);
                 this.checkAndExecuteSwap();
             },
             SELECT_QUE: () => {
                 p.que = payload.que;
-                this.log(`${p.name} 定缺${CONFIG.SUITS[payload.que]}`);
+                this.log(`${p.name} 定缺${CFG.SUITS[payload.que]}`);
                 this.ui.render(this.state, this.mySeat);
                 this.checkAndExecuteDingQue();
             },
             DISCARD: () => this.executeDiscard(playerIndex, payload.handIndex, payload.tileId, payload.tileCode),
             HU: () => this.doHu(playerIndex, payload.tile, payload.isZiMo, payload.fromPlayer),
             GANG: () => this.doGang(playerIndex, payload.gangOption || { tile: payload.gangTile, type: 'AN_GANG' }),
-            GANG_DISCARD: () => this._executeMeld(playerIndex, 'GANG', payload.tile, payload.fromPlayer, 3, CONFIG.GANG_SCORE, true),
+            GANG_DISCARD: () => this._executeMeld(playerIndex, 'GANG', payload.tile, payload.fromPlayer, 3, CFG.GANG_SCORE, true),
             PUNG: () => this._executeMeld(playerIndex, 'PUNG', payload.tile, payload.fromPlayer, 2, 0, false),
             RESPONSE_OFFTURN: () => {
                 if (this.pendingOffTurn?.decisions) {
@@ -1023,98 +1211,123 @@ class GameController {
                 } else if (this.pendingOffTurn?.idx === playerIndex) {
                     const info = this.pendingOffTurn;
                     this.pendingOffTurn = null;
-                    if (payload.choice === 'GANG') this._executeMeld(playerIndex, 'GANG', info.tile, info.discarder, 3, CONFIG.GANG_SCORE, true);
+                    if (payload.choice === 'GANG') this._executeMeld(playerIndex, 'GANG', info.tile, info.discarder, 3, CFG.GANG_SCORE, true);
                     else if (payload.choice === 'PUNG') this._executeMeld(playerIndex, 'PUNG', info.tile, info.discarder, 2, 0, false);
                     else this.arbitratePungGang(info.tile, info.discarder, info.offset);
                 }
             }
         };
-        H[action]?.();
+        handlers[action]?.();
     }
 }
 
-// グローバル初期化
-let gameController = null;
-const _state = (typeof gameState !== 'undefined') ? gameState : ((typeof require !== 'undefined') ? require('./engine.js').gameState : null);
-const _engine = (typeof MahjongEngine !== 'undefined') ? MahjongEngine : ((typeof require !== 'undefined') ? require('./engine.js').MahjongEngine : null);
-const _ai = (typeof MahjongAI !== 'undefined') ? MahjongAI : ((typeof require !== 'undefined') ? require('./engine.js').MahjongAI : null);
-const _p2p = (typeof p2pManager !== 'undefined') ? p2pManager : ((typeof require !== 'undefined') ? require('./p2p.js').p2pManager : null);
-const _flow = (typeof GameFlow !== 'undefined') ? GameFlow : ((typeof require !== 'undefined') ? require('./engine.js').GameFlow : null);
-const _dslPrng = (typeof DeterministicPRNG !== 'undefined') ? DeterministicPRNG : ((typeof require !== 'undefined') ? require('./dsl.js').DeterministicPRNG : null);
+// --- 5. インスタンス生成と初期化 ---
+const _state = (typeof globalThis !== 'undefined' && globalThis.gameState) ? globalThis.gameState : ((typeof require !== 'undefined') ? require('./engine.js').gameState : null);
+const _engine = (typeof globalThis !== 'undefined' && globalThis.MahjongEngine) ? globalThis.MahjongEngine : ((typeof require !== 'undefined') ? require('./engine.js').MahjongEngine : null);
+const _ai = (typeof globalThis !== 'undefined' && globalThis.MahjongAI) ? globalThis.MahjongAI : ((typeof require !== 'undefined') ? require('./engine.js').MahjongAI : null);
+const _p2p = (typeof globalThis !== 'undefined' && globalThis.p2pManager) ? globalThis.p2pManager : ((typeof require !== 'undefined') ? require('./p2p.js').p2pManager : null);
+const _flow = (typeof globalThis !== 'undefined' && globalThis.GameFlow) ? globalThis.GameFlow : ((typeof require !== 'undefined') ? require('./engine.js').GameFlow : null);
+const _dslPrng = (typeof globalThis !== 'undefined' && globalThis.DeterministicPRNG) ? globalThis.DeterministicPRNG : ((typeof require !== 'undefined') ? require('./dsl.js').DeterministicPRNG : null);
 
+let gameController = null;
 if (_state) {
     gameController = new GameController(_state, soundManager, UIController, _engine, _ai, _p2p, _flow, _dslPrng);
-    if (typeof window !== 'undefined') { window.gameController = gameController; window.gameState = _state; }
+    if (typeof globalThis !== 'undefined') {
+        globalThis.gameController = gameController;
+    }
+}
+
+// ブラウザ環境イベントバインド
+function setupBrowserEvents(ctrl, state) {
+    if (typeof window === 'undefined' || !ctrl || !state) return;
+    const CFG = (typeof globalThis !== 'undefined' && globalThis.CONFIG) || _CFG;
+
+    // ピンイン設定の復元
+    let savedPinyin = false;
+    try { savedPinyin = localStorage.getItem('hz_pinyin_mode') === 'true'; } catch (e) {}
+    ctrl.pinyinMode = savedPinyin;
+    UIController.applyPinyinMode(savedPinyin);
+
+    // 托管ボタン
+    const btnAuto = UIController.$('btn-auto');
+    if (btnAuto) {
+        btnAuto.onclick = () => {
+            state.autoPlay = !state.autoPlay;
+            const isPy = ctrl.pinyinMode;
+            btnAuto.innerText = isPy ? `Tuōguǎn: ${state.autoPlay ? 'Kāi' : 'Guān'}` : `托管: ${state.autoPlay ? '开' : '关'}`;
+            btnAuto.classList.toggle('active', state.autoPlay);
+            if (state.autoPlay && state.phase === CFG.PHASES.PLAYING && state.currentTurn === ctrl.mySeat) {
+                ctrl.autoPlayPlayerTurn(ctrl.mySeat);
+            }
+        };
+    }
+
+    // キーボードショートカット
+    window.addEventListener('keydown', e => {
+        const p = state.players[ctrl.mySeat];
+        if (!p) return;
+
+        if (state.phase === CFG.PHASES.SWAP3) {
+            if (e.key >= '1' && e.key <= '9') {
+                const idx = parseInt(e.key) - 1;
+                if (idx < p.hand.length) ctrl.handleTileClick(idx);
+            }
+            if (e.key === 'Enter' || e.code === 'Space') UIController.$('btn-confirm-swap')?.click();
+            return;
+        }
+
+        // アクションボタン（胡・杠・碰・过）
+        const cmdBox = UIController.$('cmd-box');
+        if (cmdBox && cmdBox.style.display !== 'none') {
+            const btnId = { H: 'btn-hu', G: 'btn-gang', P: 'btn-pung', X: 'btn-pass' }[e.key.toUpperCase()];
+            const btn = btnId && UIController.$(btnId);
+            if (btn && btn.style.display !== 'none') {
+                e.preventDefault();
+                return btn.click();
+            }
+        }
+
+        // 自手番の打牌 (数字キー 1〜9 または Space でツモ切り)
+        if (state.phase === CFG.PHASES.PLAYING && state.currentTurn === ctrl.mySeat && p.hand.length % 3 === 2) {
+            if (e.key >= '1' && e.key <= '9') {
+                const idx = parseInt(e.key) - 1;
+                if (idx < p.hand.length) ctrl.handleTileClick(idx);
+            } else if (e.code === 'Space') {
+                ctrl.handleTileClick(p.hand.length - 1);
+            }
+        }
+    });
+
+    if (window.location.hash) {
+        try { history.replaceState(null, '', window.location.pathname); } catch (e) {}
+    }
+
+    // セッション復元 または 新規ルーム作成
+    let saved = null;
+    try { saved = JSON.parse(sessionStorage.getItem('hz_session')); } catch (e) {}
+    if (saved?.role === 'client' && saved.roomCode) {
+        ctrl.handleJoinRoom(saved.roomCode, saved.seatIndex);
+    } else {
+        const code = saved?.roomCode || UIController.$('room-code-display')?.innerText.trim();
+        ctrl.handleCreateRoom(code);
+        ctrl.initGame(false);
+    }
 }
 
 if (typeof window !== 'undefined') {
     window.addEventListener('DOMContentLoaded', () => {
-        let savedPinyin = false;
-        try { savedPinyin = localStorage.getItem('hz_pinyin_mode') === 'true'; } catch (e) {}
-        if (gameController) {
-            gameController.pinyinMode = savedPinyin;
-            UIController.applyPinyinMode(savedPinyin);
-        }
-
-        const btnAuto = UIController.$('btn-auto');
-        if (btnAuto && _state) {
-            btnAuto.onclick = () => {
-                _state.autoPlay = !_state.autoPlay;
-                const isPy = gameController?.pinyinMode;
-                btnAuto.innerText = isPy ? `Tuōguǎn: ${_state.autoPlay ? 'Kāi' : 'Guān'}` : `托管: ${_state.autoPlay ? '开' : '关'}`;
-                btnAuto.classList.toggle('active', _state.autoPlay);
-                if (_state.autoPlay && _state.phase === CONFIG.PHASES.PLAYING && _state.currentTurn === gameController.mySeat) {
-                    gameController.autoPlayPlayerTurn(gameController.mySeat);
-                }
-            };
-        }
-
-        window.addEventListener('keydown', e => {
-            if (!_state) return;
-            const p = _state.players[gameController.mySeat];
-            if (!p) return;
-
-            if (_state.phase === CONFIG.PHASES.SWAP3) {
-                if (e.key >= '1' && e.key <= '9') { const idx = parseInt(e.key) - 1; if (idx < p.hand.length) gameController.handleTileClick(idx); }
-                if (e.key === 'Enter' || e.code === 'Space') UIController.$('btn-confirm-swap')?.click();
-                return;
-            }
-
-            // アクションボタン（胡・杠・碰・过）: 手番・手番外問わず cmd-box 表示中は常に有効
-            const cmdBox = UIController.$('cmd-box');
-            if (cmdBox && cmdBox.style.display !== 'none') {
-                const btnId = { H: 'btn-hu', G: 'btn-gang', P: 'btn-pung', X: 'btn-pass' }[e.key.toUpperCase()];
-                const btn = btnId && UIController.$(btnId);
-                if (btn && btn.style.display !== 'none') {
-                    e.preventDefault();
-                    return btn.click();
-                }
-            }
-
-            // 自手番の打牌
-            if (_state.phase === CONFIG.PHASES.PLAYING && _state.currentTurn === gameController.mySeat && p.hand.length % 3 === 2) {
-                if (e.key >= '1' && e.key <= '9') {
-                    const idx = parseInt(e.key) - 1;
-                    if (idx < p.hand.length) gameController.handleTileClick(idx);
-                } else if (e.code === 'Space') {
-                    gameController.handleTileClick(p.hand.length - 1);
-                }
-            }
-        });
-
-        if (window.location.hash) { try { history.replaceState(null, '', window.location.pathname); } catch (e) {} }
-
-        let saved = null;
-        try { saved = JSON.parse(sessionStorage.getItem('hz_session')); } catch (e) {}
-        if (saved?.role === 'client' && saved.roomCode) gameController.handleJoinRoom(saved.roomCode, saved.seatIndex);
-        else {
-            const code = saved?.roomCode || UIController.$('room-code-display')?.innerText.trim();
-            gameController.handleCreateRoom(code);
-            gameController.initGame(false);
-        }
+        setupBrowserEvents(gameController, _state);
     });
 }
 
+// Universal Global / Module Export
+if (typeof globalThis !== 'undefined') {
+    globalThis.SoundManager = SoundManager;
+    globalThis.soundManager = soundManager;
+    globalThis.UIController = UIController;
+    globalThis.GameController = GameController;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { SoundManager, UIController, GameController, gameController };
+    module.exports = { SoundManager, soundManager, UIController, GameController, gameController, setupBrowserEvents };
 }

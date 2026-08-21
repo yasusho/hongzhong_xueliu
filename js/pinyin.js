@@ -82,7 +82,7 @@ const PINYIN_DICT = {
     '次': 'cì',
     '张': 'zhāng',
 
-    // ログ文 (キャピタライゼーション統一)
+    // ログ文
     '新局开始，': 'Xīnjú kāishǐ, ',
     '起家': 'qǐjiā',
     '[杠]': '[Gàng]',
@@ -125,7 +125,7 @@ class PinyinHelper {
 
         let res = String(text);
 
-        // 1. 単位の先行整形 (数字 + 漢字単位をスペース付きピンインに確実変換)
+        // 1. 単位の先行整形 (数字 + 漢字単位をスペース付きピンインに変換)
         res = res
             .replace(/(\d+)\s*番/g, ' $1 fān')
             .replace(/(\d+)\s*分/g, ' $1 fēn')
@@ -142,7 +142,7 @@ class PinyinHelper {
         }
 
         // 3. スペーシング・句読点の正規化
-        res = res
+        return res
             .replace(/\)(Quē|quē|Wánjiā|Diànnǎo|Fángzhǔ|qǐjiā)/g, ') $1')
             .replace(/(\d+)\s*(fān|fēn|gēn|zhāng|wèi|cì)\b/g, '$1 $2')
             .replace(/\(\s+/g, '(')
@@ -151,16 +151,14 @@ class PinyinHelper {
             .replace(/、/g, ', ')
             .replace(/\s{2,}/g, ' ')
             .trim();
-
-        return res;
     }
 }
 
-if (typeof window !== 'undefined') {
-    window.PinyinHelper = PinyinHelper;
-    window.PINYIN_DICT = PINYIN_DICT;
+// Universal Global / Module Export
+if (typeof globalThis !== 'undefined') {
+    globalThis.PINYIN_DICT = PINYIN_DICT;
+    globalThis.PinyinHelper = PinyinHelper;
 }
-
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { PinyinHelper, PINYIN_DICT };
+    module.exports = { PINYIN_DICT, PinyinHelper };
 }

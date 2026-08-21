@@ -252,7 +252,16 @@ assert.strictEqual(testState.players[0].huRecords.length, 2, 'Player 0 should ha
 assert.strictEqual(testState.players[0].hand.length, 13, 'Hand size should be 13 after auto zimo and discard');
 console.log('✓ 和了後自動摸打＆自動自摸テスト通過');
 
+console.log('\n--- 9. ピンイン翻訳ヘルパー (PinyinHelper) テスト ---');
+PinyinHelper.isPinyin = true;
+assert.strictEqual(PinyinHelper.t('红中血流成河麻将'), 'Hóngzhōng Xuèliú Chénghé Mǎjiàng');
+assert.strictEqual(PinyinHelper.t('1万'), '1 Wàn');
+assert.strictEqual(PinyinHelper.t('4番'), '4 fān');
+assert.strictEqual(PinyinHelper.t('100分'), '100 fēn');
+PinyinHelper.isPinyin = false;
+assert.strictEqual(PinyinHelper.t('红中血流成河麻将'), '红中血流成河麻将');
+console.log('✓ ピンイン翻訳ヘルパーテスト通過');
+
 console.log('\n========================================');
 console.log('★ 全ての検証テストに正常に合格しました！');
 console.log('========================================');
-

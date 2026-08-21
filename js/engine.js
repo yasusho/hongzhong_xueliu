@@ -5,7 +5,12 @@
 const CONFIG = {
     SUITS: { W: '万', T: '筒', B: '条', HZ: '中' },
     PHASES: { INIT: 'INIT', SWAP3: 'SWAP3', DINGQUE: 'DINGQUE', PLAYING: 'PLAYING', END: 'END' },
-    BASE_SCORE: 100, INITIAL_SCORE: 5000, TOTAL_PLAYERS: 4, HAND_SIZE: 13, GANG_SCORE: 200, HUA_ZHU_PENALTY: 1600,
+    BASE_SCORE: 100,
+    INITIAL_SCORE: 5000,
+    TOTAL_PLAYERS: 4,
+    HAND_SIZE: 13,
+    GANG_SCORE: 200,
+    HUA_ZHU_PENALTY: 1600,
     DELAYS: { AI_TURN: 100, AUTO_ACTION: 100 }
 };
 
@@ -14,14 +19,33 @@ const SUIT_ORDER = { W: 1, T: 2, B: 3, HZ: 4 };
 
 // --- 麻雀計算エンジン ---
 class MahjongEngine {
-    static tileToSvgPath = t => !t ? '' : (t.suit === 'HZ' ? 'assets/tiles/zhong.svg' : `assets/tiles/${SUIT_PREFIX[t.suit]}_${t.num}.svg`);
-    static tileToString = t => !t ? '' : (t.suit === 'HZ' ? '红中' : `${t.num}${CONFIG.SUITS[t.suit] || t.suit}`);
+    static tileToSvgPath = t => {
+        if (!t) return '';
+        if (t.suit === 'HZ') return 'assets/tiles/zhong.svg';
+        return `assets/tiles/${SUIT_PREFIX[t.suit]}_${t.num}.svg`;
+    };
+
+    static tileToString = t => {
+        if (!t) return '';
+        if (t.suit === 'HZ') return '红中';
+        return `${t.num}${CONFIG.SUITS[t.suit] || t.suit}`;
+    };
 
     static createDeck() {
         let id = 0;
         return [
-            ...['W', 'T', 'B'].flatMap(s => Array.from({ length: 36 }, (_, i) => ({ id: id++, suit: s, num: Math.floor(i / 4) + 1, code: `${Math.floor(i / 4) + 1}${s}` }))),
-            ...Array.from({ length: 4 }, () => ({ id: id++, suit: 'HZ', num: 0, code: 'HZ' }))
+            ...['W', 'T', 'B'].flatMap(s => Array.from({ length: 36 }, (_, i) => ({
+                id: id++,
+                suit: s,
+                num: Math.floor(i / 4) + 1,
+                code: `${Math.floor(i / 4) + 1}${s}`
+            }))),
+            ...Array.from({ length: 4 }, () => ({
+                id: id++,
+                suit: 'HZ',
+                num: 0,
+                code: 'HZ'
+            }))
         ];
     }
 
@@ -34,7 +58,15 @@ class MahjongEngine {
         return copy;
     }
 
-    static sortHand = (hand, que = null) => hand.sort((a, b) => ((a.suit === que) - (b.suit === que)) || (SUIT_ORDER[a.suit] - SUIT_ORDER[b.suit]) || (a.num - b.num));
+    static sortHand = (hand, que = null) => {
+        return hand.sort((a, b) => {
+            const queOrder = (a.suit === que) - (b.suit === que);
+            if (queOrder !== 0) return queOrder;
+            const suitDiff = (SUIT_ORDER[a.suit] || 99) - (SUIT_ORDER[b.suit] || 99);
+            if (suitDiff !== 0) return suitDiff;
+            return a.num - b.num;
+        });
+    };
 
     static getCounts(tiles) {
         return tiles.reduce((acc, t) => {
@@ -44,9 +76,17 @@ class MahjongEngine {
         }, { counts: { W: Array(10).fill(0), T: Array(10).fill(0), B: Array(10).fill(0) }, hzCount: 0 });
     }
 
-    static countGen(p, extra = null) {
-        const all = [...p.hand, ...(extra && p.hand.length % 3 !== 2 ? [extra] : []), ...p.melds.flatMap(m => Array(m.type === 'PUNG' ? 3 : 4).fill(m.tile))].filter(t => t.suit !== 'HZ');
-        const freq = all.reduce((acc, t) => ((acc[t.code] = (acc[t.code] || 0) + 1), acc), {});
+    static countGen(player, extra = null) {
+        const all = [
+            ...player.hand,
+            ...(extra && player.hand.length % 3 !== 2 ? [extra] : []),
+            ...player.melds.flatMap(m => Array(m.type === 'PUNG' ? 3 : 4).fill(m.tile))
+        ].filter(t => t.suit !== 'HZ');
+
+        const freq = all.reduce((acc, t) => {
+            acc[t.code] = (acc[t.code] || 0) + 1;
+            return acc;
+        }, {});
         return Object.values(freq).filter(c => c === 4).length;
     }
 
@@ -165,19 +205,16 @@ class MahjongEngine {
         }
 
         // 2. 順子を作る
-        // 2.1 [idx, idx+1, idx+2] (ワイルド0枚)
         if (idx <= 7 && arr[idx] >= 1 && arr[idx + 1] >= 1 && arr[idx + 2] >= 1) {
             arr[idx]--; arr[idx + 1]--; arr[idx + 2]--;
             res = Math.min(res, this.minWildsForSuit(arr, memo));
             arr[idx]++; arr[idx + 1]++; arr[idx + 2]++;
         }
-        // 2.2 [idx, idx+1] (ワイルド1枚: idx<=7ならidx+2補填、idx=8なら7補填)
         if (idx <= 8 && arr[idx] >= 1 && arr[idx + 1] >= 1) {
             arr[idx]--; arr[idx + 1]--;
             res = Math.min(res, 1 + this.minWildsForSuit(arr, memo));
             arr[idx]++; arr[idx + 1]++;
         }
-        // 2.3 [idx, idx+2] (ワイルド1枚: idx+1補填)
         if (idx <= 7 && arr[idx] >= 1 && arr[idx + 2] >= 1) {
             arr[idx]--; arr[idx + 2]--;
             res = Math.min(res, 1 + this.minWildsForSuit(arr, memo));
@@ -188,27 +225,42 @@ class MahjongEngine {
         return res;
     }
 
-    static checkCanGang(p) {
-        const counts = p.hand.filter(t => t.suit !== 'HZ').reduce((acc, t) => ((acc[t.code] = (acc[t.code] || 0) + 1), acc), {});
-        const an = Object.keys(counts).filter(k => counts[k] === 4).map(code => ({ type: 'AN_GANG', tile: p.hand.find(t => t.code === code) }));
-        const jia = p.melds.filter(m => m.type === 'PUNG').map(m => ({ type: 'JIA_GANG', tile: p.hand.find(t => t.code === m.tile.code), meld: m })).filter(x => Boolean(x.tile));
+    static checkCanGang(player) {
+        const counts = player.hand.filter(t => t.suit !== 'HZ').reduce((acc, t) => {
+            acc[t.code] = (acc[t.code] || 0) + 1;
+            return acc;
+        }, {});
+        const an = Object.keys(counts).filter(k => counts[k] === 4).map(code => ({
+            type: 'AN_GANG',
+            tile: player.hand.find(t => t.code === code)
+        }));
+        const jia = player.melds.filter(m => m.type === 'PUNG').map(m => ({
+            type: 'JIA_GANG',
+            tile: player.hand.find(t => t.code === m.tile.code),
+            meld: m
+        })).filter(x => Boolean(x.tile));
+
         return [...an, ...jia];
     }
 
-    static checkCanPungOrGang(p, tile, type) {
-        if (!p || !tile?.suit || tile.suit === 'HZ' || tile.suit === p.que) return false;
-        return p.hand.filter(t => t?.code === tile.code).length >= (type === 'PUNG' ? 2 : 3);
+    static checkCanPungOrGang(player, tile, type) {
+        if (!player || !tile?.suit || tile.suit === 'HZ' || tile.suit === player.que) return false;
+        const matching = player.hand.filter(t => t?.code === tile.code).length;
+        return matching >= (type === 'PUNG' ? 2 : 3);
     }
 
-    static calculateFan(p, lastTile, isZiMo, fromPlayer = null, gState = {}) {
-        const hand = [...p.hand, ...(!isZiMo || p.hand.length % 3 !== 2 ? [lastTile] : [])];
-        const suits = new Set([...hand.filter(t => t.suit !== 'HZ').map(t => t.suit), ...p.melds.filter(m => m.tile.suit !== 'HZ').map(m => m.tile.suit)]);
+    static calculateFan(player, lastTile, isZiMo, fromPlayer = null, gState = {}) {
+        const hand = [...player.hand, ...(!isZiMo || player.hand.length % 3 !== 2 ? [lastTile] : [])];
+        const suits = new Set([
+            ...hand.filter(t => t.suit !== 'HZ').map(t => t.suit),
+            ...player.melds.filter(m => m.tile.suit !== 'HZ').map(m => m.tile.suit)
+        ]);
         const { counts, hzCount } = this.getCounts(hand);
 
-        const isQiDui = (hand.length === 14 && !p.melds.length && this.checkQiDui(counts, hzCount));
-        const isJinGouDiao = (p.melds.length === 4);
+        const isQiDui = (hand.length === 14 && !player.melds.length && this.checkQiDui(counts, hzCount));
+        const isJinGouDiao = (player.melds.length === 4);
         const isDuiDuiHu = !isQiDui && this.checkDuiDuiHu(counts, hzCount);
-        const genCount = this.countGen(p, lastTile);
+        const genCount = this.countGen(player, lastTile);
 
         const yaku = [
             { cond: isQiDui, fan: 2, name: '七对' },
@@ -216,7 +268,7 @@ class MahjongEngine {
             { cond: isJinGouDiao, fan: 1, name: '金钩钓' },
             { cond: suits.size === 1, fan: 2, name: '清一色' },
             { cond: genCount > 0, fan: genCount, name: `${genCount}根` },
-            { cond: Boolean(isZiMo && gState.lastActionIsGang && gState.lastGangPlayer === p.id), fan: 1, name: '杠上花' },
+            { cond: Boolean(isZiMo && gState.lastActionIsGang && gState.lastGangPlayer === player.id), fan: 1, name: '杠上花' },
             { cond: Boolean(!isZiMo && gState.lastActionIsGang && gState.lastGangPlayer === fromPlayer), fan: 1, name: '杠上炮' },
             { cond: isZiMo, fan: 1, name: '自摸' }
         ].filter(r => r.cond);
@@ -228,26 +280,26 @@ class MahjongEngine {
         return { fan: totalFan, name: names.join(' ') };
     }
 
-    static getTingTiles(p) {
-        if (!p?.hand || p.hand.length === 0 || p.hand.some(t => t.suit === p.que)) return [];
-        const cands = ['W', 'T', 'B'].filter(s => s !== p.que).flatMap(s => Array.from({ length: 9 }, (_, i) => ({ suit: s, num: i + 1, code: `${i + 1}${s}` })));
+    static getTingTiles(player) {
+        if (!player?.hand || player.hand.length === 0 || player.hand.some(t => t.suit === player.que)) return [];
+        const cands = ['W', 'T', 'B'].filter(s => s !== player.que).flatMap(s => Array.from({ length: 9 }, (_, i) => ({ suit: s, num: i + 1, code: `${i + 1}${s}` })));
         cands.push({ suit: 'HZ', num: 0, code: 'HZ' });
 
-        if (p.hand.length % 3 === 1) {
-            return cands.filter(t => this.checkCanHu(p, t));
+        if (player.hand.length % 3 === 1) {
+            return cands.filter(t => this.checkCanHu(player, t));
         }
 
-        if (p.hand.length % 3 === 2) {
-            const baseHand = p.hand.slice(0, -1);
-            const tingLast = cands.filter(t => this.checkCanHu({ ...p, hand: baseHand }, t));
+        if (player.hand.length % 3 === 2) {
+            const baseHand = player.hand.slice(0, -1);
+            const tingLast = cands.filter(t => this.checkCanHu({ ...player, hand: baseHand }, t));
             if (tingLast.length > 0) return tingLast;
 
             const allTings = new Map();
-            for (let i = 0; i < p.hand.length; i++) {
-                const cutTile = p.hand[i];
-                if (p.hand.some(t => t.suit === p.que) && cutTile.suit !== p.que) continue;
-                const testHand = p.hand.filter((_, idx) => idx !== i);
-                const tings = cands.filter(t => this.checkCanHu({ ...p, hand: testHand }, t));
+            for (let i = 0; i < player.hand.length; i++) {
+                const cutTile = player.hand[i];
+                if (player.hand.some(t => t.suit === player.que) && cutTile.suit !== player.que) continue;
+                const testHand = player.hand.filter((_, idx) => idx !== i);
+                const tings = cands.filter(t => this.checkCanHu({ ...player, hand: testHand }, t));
                 tings.forEach(t => allTings.set(t.code, t));
             }
             return Array.from(allTings.values());
@@ -261,19 +313,32 @@ class MahjongEngine {
 class MahjongAI {
     static getSwapTiles(hand) {
         const nonHz = hand.filter(t => t.suit !== 'HZ');
-        const counts = nonHz.reduce((acc, t) => ((acc[t.suit] = (acc[t.suit] || 0) + 1), acc), { W: 0, T: 0, B: 0 });
-        return [...nonHz].sort((a, b) => (counts[a.suit] - counts[b.suit]) || (this.evalIso(nonHz, b) - this.evalIso(nonHz, a)) || (a.num - b.num)).slice(0, 3);
+        const counts = nonHz.reduce((acc, t) => {
+            acc[t.suit] = (acc[t.suit] || 0) + 1;
+            return acc;
+        }, { W: 0, T: 0, B: 0 });
+
+        return [...nonHz].sort((a, b) => {
+            const countDiff = counts[a.suit] - counts[b.suit];
+            if (countDiff !== 0) return countDiff;
+            const isoDiff = this.evalIso(nonHz, b) - this.evalIso(nonHz, a);
+            if (isoDiff !== 0) return isoDiff;
+            return a.num - b.num;
+        }).slice(0, 3);
     }
 
     static getDingQue(hand) {
-        const counts = hand.reduce((acc, t) => ((acc[t.suit] = (acc[t.suit] || 0) + 1), acc), { W: 0, T: 0, B: 0 });
+        const counts = hand.reduce((acc, t) => {
+            acc[t.suit] = (acc[t.suit] || 0) + 1;
+            return acc;
+        }, { W: 0, T: 0, B: 0 });
         return ['W', 'T', 'B'].reduce((min, s) => counts[s] < counts[min] ? s : min, 'W');
     }
 
-    static chooseDiscardIndex(p) {
-        return p.hand.map((t, idx) => ({
+    static chooseDiscardIndex(player) {
+        return player.hand.map((t, idx) => ({
             idx,
-            prio: t.suit === p.que ? (1000 - Math.min(t.num - 1, 9 - t.num)) : (t.suit === 'HZ' ? -1000 : this.evalIso(p.hand, t))
+            prio: t.suit === player.que ? (1000 - Math.min(t.num - 1, 9 - t.num)) : (t.suit === 'HZ' ? -1000 : this.evalIso(player.hand, t))
         })).sort((a, b) => b.prio - a.prio)[0]?.idx || 0;
     }
 
@@ -282,13 +347,16 @@ class MahjongAI {
         return 100 - (diffs.includes(0) ? 40 : 0) - (diffs.includes(1) ? 30 : 0) - (diffs.includes(2) ? 15 : 0) + ([1, 9].includes(tile.num) ? 10 : ([2, 8].includes(tile.num) ? 5 : 0));
     }
 
-    static shouldPung(p, t) {
-        if (t.suit === p.que || t.suit === 'HZ' || p.hand.some(x => x.suit === p.que)) return false;
-        const counts = p.hand.filter(x => x.suit !== 'HZ').reduce((acc, x) => ((acc[x.code] = (acc[x.code] || 0) + 1), acc), {});
+    static shouldPung(player, tile) {
+        if (tile.suit === player.que || tile.suit === 'HZ' || player.hand.some(x => x.suit === player.que)) return false;
+        const counts = player.hand.filter(x => x.suit !== 'HZ').reduce((acc, x) => {
+            acc[x.code] = (acc[x.code] || 0) + 1;
+            return acc;
+        }, {});
         return Object.values(counts).filter(c => c >= 2).length >= 2;
     }
 
-    static shouldGang = (p, t) => t.suit !== p.que && t.suit !== 'HZ' && !p.hand.some(x => x.suit === p.que);
+    static shouldGang = (player, tile) => tile.suit !== player.que && tile.suit !== 'HZ' && !player.hand.some(x => x.suit === player.que);
 }
 
 // --- 進行・精算 & 状態管理 ---
@@ -309,13 +377,17 @@ class GameFlow {
     static checkDingQueComplete = state => state.players.every(p => Boolean(p.que));
 
     static calculateEndSettlement(state, engine) {
-        const logs = [], isHZ = p => p.hand.some(t => t.suit === p.que);
+        const logs = [];
+        const isHZ = p => p.hand.some(t => t.suit === p.que);
         const [hz, nonHz] = [state.players.filter(isHZ), state.players.filter(p => !isHZ(p))];
+
+        // 1. 査花猪
         hz.forEach(hp => nonHz.forEach(np => {
             state.transferScore(hp.id, np.id, CONFIG.HUA_ZHU_PENALTY);
             logs.push(`查花猪: ${hp.name} → ${np.name} ${CONFIG.HUA_ZHU_PENALTY}分`);
         }));
 
+        // 2. 査大叫（査叫）
         const ev = state.players.filter(p => !p.isHu && !isHZ(p)).map(p => ({ p, ting: engine.getTingTiles(p) }));
         const [ting, noting] = [ev.filter(x => x.ting.length > 0), ev.filter(x => !x.ting.length)];
         noting.forEach(({ p: np }) => ting.forEach(({ p: tp, ting: tList }) => {
@@ -324,34 +396,79 @@ class GameFlow {
             state.transferScore(np.id, tp.id, penalty);
             logs.push(`查大叫: ${np.name} → ${tp.name} ${penalty}分 (${maxFan}番)`);
         }));
+
         return logs;
     }
 }
 
 class GameState {
-    constructor() { this.reset(); }
+    constructor() {
+        this.reset();
+    }
+
     reset() {
         Object.assign(this, {
-            phase: CONFIG.PHASES.INIT, gameSeed: null, wall: null, wallCount: 112, currentTurn: 0, startPlayer: 0, lastDiscard: null, autoPlay: false,
-            selectedSwapIndices: [], lastActionIsGang: false, lastGangPlayer: null, logs: ['系统就绪。'],
+            phase: CONFIG.PHASES.INIT,
+            gameSeed: null,
+            wall: null,
+            wallCount: 112,
+            currentTurn: 0,
+            startPlayer: 0,
+            lastDiscard: null,
+            autoPlay: false,
+            selectedSwapIndices: [],
+            lastActionIsGang: false,
+            lastGangPlayer: null,
+            logs: ['系统就绪。'],
             players: Array.from({ length: CONFIG.TOTAL_PLAYERS }, (_, i) => ({
-                id: i, name: `${i + 1}P`, hand: [], melds: [], discards: [], que: null, score: CONFIG.INITIAL_SCORE, isHu: false, huRecords: [], swapTiles: []
+                id: i,
+                name: `${i + 1}P`,
+                hand: [],
+                melds: [],
+                discards: [],
+                que: null,
+                score: CONFIG.INITIAL_SCORE,
+                isHu: false,
+                huRecords: [],
+                swapTiles: []
             }))
         });
     }
-    get remainingWall() { return this.wall ? this.wall.length : (this.wallCount ?? 112); }
+
+    get remainingWall() {
+        return this.wall ? this.wall.length : (this.wallCount ?? 112);
+    }
+
     transferScore(from, to, amount) {
         if (this.players[from] && this.players[to]) {
             this.players[from].score -= amount;
             this.players[to].score += amount;
         }
     }
-    sortAllHands() { this.players.forEach(p => MahjongEngine.sortHand(p.hand, p.que)); }
-    isGameOver() { return this.remainingWall === 0 || this.players.some(p => p.score <= 0); }
+
+    sortAllHands() {
+        this.players.forEach(p => MahjongEngine.sortHand(p.hand, p.que));
+    }
+
+    isGameOver() {
+        return this.remainingWall === 0 || this.players.some(p => p.score <= 0);
+    }
 }
 
 const gameState = new GameState();
 
+// Universal Global / Module Export
+if (typeof globalThis !== 'undefined') {
+    globalThis.CONFIG = CONFIG;
+    globalThis.SUIT_PREFIX = SUIT_PREFIX;
+    globalThis.SUIT_ORDER = SUIT_ORDER;
+    globalThis.MahjongEngine = MahjongEngine;
+    globalThis.MahjongAI = MahjongAI;
+    globalThis.GameFlow = GameFlow;
+    globalThis.GameState = GameState;
+    globalThis.gameState = gameState;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { CONFIG, MahjongEngine, MahjongAI, GameFlow, GameState, gameState };
+    module.exports = { CONFIG, SUIT_PREFIX, SUIT_ORDER, MahjongEngine, MahjongAI, GameFlow, GameState, gameState };
 }
