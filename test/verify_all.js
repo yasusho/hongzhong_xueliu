@@ -32,13 +32,16 @@ const createMockEnv = () => {
     const playedSounds = [];
     const sound = { play: s => playedSounds.push(s) };
     const logs = [];
+    let isResultModalVisible = false;
     const ui = {
         render: () => {}, updateTingPanel: () => {}, showActionBox: () => {}, hideActionBox: () => {},
-        showInstruction: () => {}, hideInstruction: () => {}, showResultModal: () => {}, hideResultModal: () => {},
+        showInstruction: () => {}, hideInstruction: () => {},
+        showResultModal: () => { isResultModalVisible = true; },
+        hideResultModal: () => { isResultModalVisible = false; },
         log: text => logs.push(text), clearLog: () => {}
     };
     const ctrl = new GameController(state, sound, ui, MahjongEngine, MahjongAI, null);
-    return { state, sound, playedSounds, ui, logs, ctrl };
+    return { state, sound, playedSounds, ui, logs, ctrl, isModalVisible: () => isResultModalVisible };
 };
 
 console.log('--- 1. モジュール読み込みテスト ---');
@@ -161,15 +164,24 @@ c10.dispatchAction(1, 'HU', { tile: s10.players[1].hand[13], isZiMo: true });
 assert(playedSounds.includes('hu_opp'));
 console.log('✓ 自家/他家和了時の効果音鳴らし分けテスト通過');
 
-console.log('\n--- 11. P2P クライアント副露（ポン・カン）＆オフターン調停テスト ---');
-const { state: s11, ctrl: c11 } = createMockEnv();
+console.log('\n--- 11. P2P クライアント副露（ポン・カン）＆終局モーダル表示テスト ---');
+const { state: s11, ctrl: c11, isModalVisible: isModalVisible11 } = createMockEnv();
 s11.phase = CONFIG.PHASES.PLAYING;
 s11.players[1].hand = [{ suit: 'W', num: 1, code: '1W' }, { suit: 'W', num: 1, code: '1W' }, { suit: 'T', num: 2, code: '2T' }];
 s11.players[1].que = 'B';
 c11.dispatchAction(1, 'MELD', { type: 'PUNG', tile: { suit: 'W', num: 1, code: '1W' }, from: 0, removeCount: 2, score: 0, isGang: false });
 assert.strictEqual(s11.players[1].melds.length, 1);
 assert.strictEqual(s11.players[1].melds[0].type, 'PUNG');
-console.log('✓ P2P クライアント副露（ポン）＆オフターン調停テスト通過');
+
+// クライアント側でENDフェーズ受信時に結果モーダルが表示されること
+c11.handleRemoteStateSync({ phase: CONFIG.PHASES.END, players: s11.players, settlementLogs: ['精算ログ'] });
+assert.strictEqual(isModalVisible11(), true, 'クライアント側でENDフェーズ受信時に結果モーダルが表示される');
+
+// 新局開始時にモーダルが非表示になること
+c11.handleRemoteStateSync({ phase: CONFIG.PHASES.SWAP3, players: s11.players });
+assert.strictEqual(isModalVisible11(), false, '新局受信時に結果モーダルが非表示になる');
+
+console.log('✓ P2P クライアント副露（ポン）＆終局モーダル表示テスト通過');
 
 console.log('\n--- 12. 定缺（定缺選択・手牌ソート・打牌制約・自動打缺・查花猪）総合テスト ---');
 const { state: s12, ctrl: c12 } = createMockEnv();

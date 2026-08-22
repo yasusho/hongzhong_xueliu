@@ -490,6 +490,14 @@ class GameController {
         this.updateRoomMembersDisplay();
         this.ui.render(this.state, this.mySeat);
 
+        if (this.state.phase === CONFIG.PHASES.END) {
+            this.ui.hideInstruction();
+            this.ui.hideActionBox();
+            this.ui.showResultModal(this.state.players, this.state.settlementLogs || []);
+        } else {
+            this.ui.hideResultModal();
+        }
+
         if (this.state.phase === CONFIG.PHASES.PLAYING && this.state.currentTurn === this.mySeat) {
             const isAuto = this.state.autoPlay || myPlayer?.isHu || (this.state.autoQue && myPlayer?.que && myPlayer.hand.some(t => t.suit === myPlayer.que));
             if (isAuto) {
