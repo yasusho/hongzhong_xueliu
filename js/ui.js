@@ -45,8 +45,8 @@ const TRANSLATIONS = {
     '点炮': ['点炮', 'Diǎnpào'],
     '自摸': ['自摸', 'Zìmō'],
     '开局': ['开局', 'Kāijú'],
-    '起家': ['が起家です', 'qǐjiā'],
-    '完成': ['完成', 'wánchéng'],
+    '起家': ['が起家です', 'Qǐjiā'],
+    '完成': ['完成', 'Wánchéng'],
 
     // 役名
     '平胡': ['平胡', 'Pínghú'],
@@ -60,24 +60,25 @@ const TRANSLATIONS = {
     // 托管与状态
     '托管': ['自动', 'Tuōguǎn'],
     '托管中': ['自动中', 'Tuōguǎn zhōng'],
-    '托管: 开': ['自动: ON', 'Tuōguǎn: ON'],
-    '托管: 关': ['自动: OFF', 'Tuōguǎn: OFF'],
+    '托管: 开': ['自动: ON', 'Tuōguǎn: Kāi'],
+    '托管: 关': ['自动: OFF', 'Tuōguǎn: Guān'],
     '自动打缺': ['自动で缺を打つ', 'Zìdòng dǎquē'],
     '自动打缺中': ['自动打缺中', 'Zìdòng dǎquē zhōng'],
-    '自动打缺: 开': ['自动打缺: ON', 'Zìdòng dǎquē: ON'],
-    '自动打缺: 关': ['自动打缺: OFF', 'Zìdòng dǎquē: OFF'],
-    '已胡牌（自动摸打）': ['すでに胡牌（自动摸打）', 'Yǐ Hú (Zìdòng mō dǎ)'],
-    '已胡': ['すでに胡牌', 'Yǐ Hú'],
+    '自动打缺: 开': ['自动打缺: ON', 'Zìdòng dǎquē: Kāi'],
+    '自动打缺: 关': ['自动打缺: OFF', 'Zìdòng dǎquē: Guān'],
+    '已胡牌（自动摸打）': ['すでに胡牌（自动摸打）', 'Yǐ hú pái (Zìdòng mō dǎ)'],
+    '已胡牌（自动摸打中）': ['すでに胡牌（自动摸打中）', 'Yǐ hú pái (Zìdòng mō dǎ zhōng)'],
+    '已胡': ['すでに胡牌', 'Yǐ hú'],
 
     // 结算与提示
     '对局结算': ['对局结算', 'Duìjú Jiésuàn'],
     '再来一局': ['もう一局', 'Zàilái Yìjú'],
-    '等待房主再来一局': ['房主の再来を待ち', 'Děngdài fángzhǔ kāijú'],
-    '新建房间 (重置)': ['新しくルーム建て', 'Xīnjiàn Fángjiān (Chóngzhì)'],
-    '查花猪': ['欠色ペナルティ', 'Chá Huāzhū'],
-    '查大叫': ['ノーテン罰符', 'Chá Dàjiào'],
+    '等待房主再来一局': ['房主の再来を待ち', 'Děngdài fángzhǔ zàilái yìjú'],
+    '新建房间 (重置)': ['新しくルーム建て', 'Xīnjiàn fángjiān (Chóngzhì)'],
+    '查花猪': ['欠色ペナルティ', 'Chá huāzhū'],
+    '查大叫': ['ノーテン罰符', 'Chá dàjiào'],
     '本局未胡牌': ['本局未胡牌', 'Běnjú wèi hú pái'],
-    '清算明细': ['清算明细', 'Qīngsuàn Míngxì'],
+    '清算明细': ['清算明细', 'Qīngsuàn míngxì'],
 
     // 警告・通知ログ
     '红中不能换牌': ['红中は换牌できません！', 'Hóngzhōng bùnéng huànpái'],
@@ -94,9 +95,10 @@ const TRANSLATIONS = {
     '已加入房间': ['ルームに加入', 'Yǐ jiārù fángjiān'],
     '房间已满员': ['房间は満員', 'Fángjiān yǐ mǎnyuán'],
     '请输入4位房间号:': ['4桁のルーム番号を入力してください:', 'Qǐng shūrù 4 wèi fángjiānhào:'],
-    '请输入你的玩家昵称 (最多8字):': ['玩家のニックネームを入力してください (最多8字):', 'Qǐng shūrù wánjiā nǐchēng (Zuìduō 8 zì):'],
+    '请输入你的玩家昵称 (最多8字):': ['玩家のニックネームを入力してください (最多8字):', 'Qǐng shūrù nǐ de wánjiā nǐchēng (Zuìduō 8 zì):'],
     '加入房间失败: ': ['房间への加入に失敗: ', 'Jiārù fángjiān shībài: '],
-    '连接超时：请确认房间号是否正确': ['タイムアウト：房间番号を确认してください', 'Liánjiē chāoshí'],
+    '连接超时：请确认房间号是否正确': ['タイムアウト：房间番号を确认してください', 'Liánjiē chāoshí: Qǐng quèrèn fángjiānhào shìfǒu zhèngquè'],
+    '请等待房主开局': ['房主の开局を待ってください', 'Qǐng děngdài fángzhǔ kāijú'],
 
     // 单位・数量
     '手番': ['手番', 'Shǒufān'],
@@ -106,7 +108,10 @@ const TRANSLATIONS = {
     '位': ['位', 'wèi'],
     '次': ['回', 'cì'],
     '张': ['枚', 'zhāng'],
-    '各家': ['各家', 'gèjiā']
+    '各家': ['各家', 'gèjiā'],
+    '万': ['万', 'wàn'],
+    '筒': ['筒', 'tǒng'],
+    '条': ['条', 'tiáo']
 };
 
 class I18nHelper {
@@ -135,7 +140,8 @@ class I18nHelper {
     }
 
     static toggleLanguage() {
-        return this.setMode(this.lang === 'JA' ? 'ZH' : 'JA');
+        this.lang = (this.lang === 'JA') ? 'ZH' : 'JA';
+        return this.lang;
     }
 
     static togglePinyin() {
@@ -202,11 +208,19 @@ class UIController {
             if (pyBtn) pyBtn.classList.toggle('active', mode === 'PY');
         }
 
-        if (typeof gameState !== 'undefined') {
+        const ctrl = (typeof window !== 'undefined') ? window.gameController : null;
+        const curState = ctrl?.state || (typeof gameState !== 'undefined' ? gameState : null);
+        if (curState) {
             const autoBtn = this.$('btn-auto');
-            if (autoBtn) autoBtn.innerText = gameState.autoPlay ? pyT('托管: 开') : pyT('托管: 关');
+            if (autoBtn) {
+                autoBtn.innerText = curState.autoPlay ? pyT('托管: 开') : pyT('托管: 关');
+                autoBtn.classList.toggle('active', Boolean(curState.autoPlay));
+            }
             const autoQueBtn = this.$('btn-auto-que');
-            if (autoQueBtn) autoQueBtn.innerText = gameState.autoQue ? pyT('自动打缺: 开') : pyT('自动打缺: 关');
+            if (autoQueBtn) {
+                autoQueBtn.innerText = curState.autoQue ? pyT('自动打缺: 开') : pyT('自动打缺: 关');
+                autoQueBtn.classList.toggle('active', Boolean(curState.autoQue));
+            }
         }
     }
 
@@ -267,6 +281,17 @@ class UIController {
             huTagEl.innerHTML = myPlayer.isEliminated
                 ? `<span class="tag-eliminated">${pyT('脱落')}</span>`
                 : (myPlayer.isHu ? `${pyT('已胡')}${myPlayer.huRecords.length}` : '');
+        }
+
+        const autoBtn = this.$('btn-auto');
+        if (autoBtn) {
+            autoBtn.innerText = state.autoPlay ? pyT('托管: 开') : pyT('托管: 关');
+            autoBtn.classList.toggle('active', Boolean(state.autoPlay));
+        }
+        const autoQueBtn = this.$('btn-auto-que');
+        if (autoQueBtn) {
+            autoQueBtn.innerText = state.autoQue ? pyT('自动打缺: 开') : pyT('自动打缺: 关');
+            autoQueBtn.classList.toggle('active', Boolean(state.autoQue));
         }
 
         this.renderHand(myPlayer, state, mySeat);

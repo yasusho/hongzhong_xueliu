@@ -142,6 +142,8 @@ assert.strictEqual(I18nHelper.getMode(), 'PY');
 assert.strictEqual(I18nHelper.lang, 'ZH');
 assert.strictEqual(I18nHelper.isPinyin, true);
 assert(pyT('红中').includes('Hóngzhōng'));
+assert.strictEqual(pyT('托管: 开'), 'Tuōguǎn: Kāi');
+assert.strictEqual(pyT('自动打缺: 关'), 'Zìdòng dǎquē: Guān');
 const pinyinLog = pyT('★ 1P 自摸 1万 (清一色 4番 1600分)');
 assert(pinyinLog.includes('Zìmō') && pinyinLog.includes('Qīngyīsè') && pinyinLog.includes('fān') && pinyinLog.includes('fēn'));
 
@@ -152,6 +154,7 @@ assert.strictEqual(I18nHelper.lang, 'ZH');
 assert.strictEqual(I18nHelper.isPinyin, false);
 assert.strictEqual(pyT('红中'), '红中');
 assert.strictEqual(pyT('胡'), '胡');
+assert.strictEqual(pyT('托管: 开'), '托管: 开');
 
 console.log('✓ 日 汉 A 相補分布言語切替テスト通過');
 
@@ -166,6 +169,8 @@ console.log('✓ 自家/他家和了時の効果音鳴らし分けテスト通�
 
 console.log('\n--- 11. P2P クライアント副露（ポン・カン）＆終局モーダル表示テスト ---');
 const { state: s11, ctrl: c11, isModalVisible: isModalVisible11 } = createMockEnv();
+c11.isOnline = true;
+c11.p2p = { isHost: true, broadcastState: () => {}, playersInfo: { 0: { name: '1P' }, 1: { name: '2P (友人)' } } };
 s11.phase = CONFIG.PHASES.PLAYING;
 s11.players[1].hand = [{ suit: 'W', num: 1, code: '1W' }, { suit: 'W', num: 1, code: '1W' }, { suit: 'T', num: 2, code: '2T' }];
 s11.players[1].que = 'B';
@@ -176,6 +181,12 @@ assert.strictEqual(s11.players[1].melds[0].type, 'PUNG');
 // クライアント側でENDフェーズ受信時に結果モーダルが表示されること
 c11.handleRemoteStateSync({ phase: CONFIG.PHASES.END, players: s11.players, settlementLogs: ['精算ログ'] });
 assert.strictEqual(isModalVisible11(), true, 'クライアント側でENDフェーズ受信時に結果モーダルが表示される');
+
+// 再来一局でオンライン状態および同室メンバー情報が維持されること
+c11.handleRestartClick();
+assert.strictEqual(c11.isOnline, true, '再来一局後もオンライン状態が維持される');
+assert.strictEqual(s11.phase, CONFIG.PHASES.SWAP3, '再来一局でSWAP3フェーズに初期化される');
+assert.strictEqual(s11.players[1].name, '2P (友人)', '同室メンバー情報が維持される');
 
 // 新局開始時にモーダルが非表示になること
 c11.handleRemoteStateSync({ phase: CONFIG.PHASES.SWAP3, players: s11.players });

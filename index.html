@@ -71,8 +71,8 @@
             <span class="tag-hu" id="hu-tag-0"></span>
             <span id="ting-info" class="ting-panel" style="display:none;"><b id="lbl-ting" data-i18n="听牌">听牌</b>: <span id="ting-list"></span></span>
             <div class="auto-toggles-wrapper">
-                <button id="btn-auto-que" class="btn-auto-toggle" data-i18n="自动打缺: 关">自动打缺: 关</button>
-                <button id="btn-auto" class="btn-auto-toggle" data-i18n="托管: 关">托管: 关</button>
+                <button id="btn-auto-que" class="btn-auto-toggle">自动打缺: 关</button>
+                <button id="btn-auto" class="btn-auto-toggle">托管: 关</button>
             </div>
         </div>
 
@@ -101,7 +101,7 @@
             <div id="result-ranks"></div>
             <div id="result-penalties" class="result-penalties"></div>
             <div class="result-actions">
-                <button class="btn-restart" onclick="gameController.initGame(false)" data-i18n="再来一局">再来一局</button>
+                <button class="btn-restart" onclick="gameController.handleRestartClick()" data-i18n="再来一局">再来一局</button>
                 <button id="btn-reset-room" onclick="gameController.handleResetAndNewRoom()" data-i18n="新建房间 (重置)">新建房间 (重置)</button>
             </div>
         </div>

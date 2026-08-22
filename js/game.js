@@ -143,8 +143,8 @@ class GameController {
         map[action]?.();
     }
 
-    initGame(isOnlineMatch = false, customSeed = null) {
-        this.isOnline = isOnlineMatch;
+    initGame(isOnlineMatch = null, customSeed = null) {
+        if (isOnlineMatch !== null) this.isOnline = Boolean(isOnlineMatch);
         this.isDiscarding = false;
         this.pendingOffTurn = null;
         this.ui.hideInstruction();
@@ -683,9 +683,18 @@ class GameController {
     }
 
     handleStartGame() {
-        if (this.isOnline && !this.p2p?.isHost) return this.log('请等待房主开局');
-        this.initGame(true);
+        if (this.isOnline && !this.p2p?.isHost) return this.log(pyT('请等待房主开局'));
+        this.initGame(this.isOnline || Boolean(this.p2p?.isHost && this.p2p?.connections?.size > 0));
         this.syncStateToPeers();
+    }
+
+    handleRestartClick() {
+        if (this.isOnline || (this.p2p?.isHost && this.p2p?.connections?.size > 0)) {
+            if (!this.p2p?.isHost) return this.log(pyT('请等待房主开局'));
+            this.handleStartGame();
+        } else {
+            this.initGame(false);
+        }
     }
 }
 
@@ -705,19 +714,16 @@ function setupBrowserEvents(ctrl, state) {
             (localStorage.getItem('hz_lang') === 'JA' ? 'JA' : (localStorage.getItem('hz_pinyin') === 'true' ? 'PY' : 'ZH'));
         I18nHelper.setMode(savedMode);
     } catch (e) {}
-    UIController.applyPinyinMode();
 
     const bindToggle = (btnId, key, storeKey, onToggle) => {
         const btn = UIController.$(btnId);
         if (!btn) return;
         if (storeKey) {
             try { state[key] = (localStorage.getItem(storeKey) === 'true'); } catch (e) {}
-            btn.classList.toggle('active', state[key]);
         }
         btn.onclick = () => {
             state[key] = !state[key];
             if (storeKey) { try { localStorage.setItem(storeKey, state[key]); } catch (e) {} }
-            btn.classList.toggle('active', state[key]);
             ctrl.ui.render(state, ctrl.mySeat);
             onToggle?.();
         };
